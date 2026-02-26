@@ -34,8 +34,8 @@ func (s *UserServiceServer) RegisterUser(ctx context.Context, req *pb.RegisterUs
 		Signature: fmt.Sprintf("sig_%d_%d", userID, time.Now().Unix()),
 		DiffUserData: map[string]*pb.DiffData{
 			"user": {
-				UpdateRecordsJson: fmt.Sprintf(`[{"userId":%d,"name":"Krettsy","comment":"","registDatetime":"%s"}]`,
-					userID, time.Now().Format(time.RFC3339)),
+				UpdateRecordsJson: fmt.Sprintf(`[{"UserId":%d,"PlayerId":%d,"OsType":2,"PlatformType":2,"UserRestrictionType":0,"RegisterDatetime":%d,"GameStartDatetime":0,"LatestVersion":0}]`,
+					userID, userID, time.Now().Unix()),
 			},
 		},
 	}, nil

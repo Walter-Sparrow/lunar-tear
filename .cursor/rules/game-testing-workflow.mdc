@@ -23,3 +23,13 @@ Use the `frida-game-launch` skill. Key points:
 
 Read `docs/PROGRESS.md` at the start of each session for current state, blockers, and next steps.
 The project strategy is **minimal client patches, server-first implementation**.
+
+## IL2CPP Dump Reference
+
+**Always consult `client/il2cpp_dump/dump.cs`** when unsure about:
+- Method signatures, RVAs, field offsets
+- Class hierarchies, generic type parameters
+- Enum values, interface implementations
+
+The dump contains the full decompiled C# signatures from Il2CppDumper.
+Use `Grep` to search it — never guess RVAs or field layouts when the dump is available.

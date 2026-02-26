@@ -55,6 +55,12 @@ func (s *OctoHTTPServer) handleAll(w http.ResponseWriter, r *http.Request) {
 
 	path := r.URL.Path
 
+	// Octo v2 API — asset bundle management
+	if strings.HasPrefix(path, "/v2/") {
+		s.handleOctoV2(w, r, path)
+		return
+	}
+
 	// Game web API requests
 	if strings.Contains(path, "/web/") || strings.Contains(r.Host, "web.app.nierreincarnation") {
 		s.handleWebAPI(w, r, path)
@@ -70,18 +76,47 @@ func (s *OctoHTTPServer) handleAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Octo asset requests
+	// Log request body for debugging Octo protocol
 	if r.Body != nil {
-		body := make([]byte, 1024)
+		body := make([]byte, 4096)
 		n, _ := r.Body.Read(body)
 		if n > 0 {
 			log.Printf("[HTTP]   body (%d bytes): %x", n, body[:n])
+			if n < 256 {
+				log.Printf("[HTTP]   body (ascii): %s", string(body[:n]))
+			}
 		}
 	}
 
+	log.Printf("[HTTP] >>> UNHANDLED REQUEST: %s %s — returning empty 200", r.Method, path)
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.WriteHeader(200)
 	w.Write([]byte{})
+}
+
+func (s *OctoHTTPServer) handleOctoV2(w http.ResponseWriter, r *http.Request, path string) {
+	log.Printf("[OctoV2] %s %s", r.Method, path)
+
+	// /v2/pub/a/{appId}/v/{version}/list/{offset} — resource listing
+	// Return empty protobuf = "no resources to download, you're up to date"
+	if strings.Contains(path, "/list/") {
+		log.Printf("[OctoV2] Resource list request — returning empty list (up to date)")
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		w.WriteHeader(200)
+		return
+	}
+
+	// /v2/pub/a/{appId}/v/{version}/info — DB info
+	if strings.Contains(path, "/info") {
+		log.Printf("[OctoV2] Info request — returning empty protobuf")
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		w.WriteHeader(200)
+		return
+	}
+
+	log.Printf("[OctoV2] Unknown endpoint: %s — returning empty protobuf", path)
+	w.Header().Set("Content-Type", "application/x-protobuf")
+	w.WriteHeader(200)
 }
 
 func (s *OctoHTTPServer) handleWebAPI(w http.ResponseWriter, r *http.Request, path string) {

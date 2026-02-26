@@ -58,7 +58,9 @@ awaitLibil2cpp(() => {
         onEnter(args) { console.log("[Title] >>> OnPreTitle"); }
     });
     hook("Title.OnTitleScreen", 0x30A9D04, {
-        onEnter(args) { console.log("[Title] >>> OnTitleScreen"); }
+        onEnter(args) {
+            console.log(`[Title] >>> OnTitleScreen`);
+        }
     });
     hook("Title.OnApplicationVersion", 0x30A9128, {
         onEnter(args) { console.log("[Title] >>> OnApplicationVersion"); }
@@ -80,41 +82,26 @@ awaitLibil2cpp(() => {
         }
     });
     // Title.InitializeAssetBundles — RVA: 0x30A94DC
-    // Returns UniTask (non-generic, 16 bytes): x0=0, x1=0 → source=null, token=0 → completed
-    (function() {
-        const addr = libil2cpp.add(0x30A94DC);
-        Memory.patchCode(addr, 12, code => {
-            code.writeByteArray([
-                0x00, 0x00, 0x80, 0xd2, // mov x0, #0
-                0x01, 0x00, 0x80, 0xd2, // mov x1, #0
-                0xc0, 0x03, 0x5f, 0xd6  // ret
-            ]);
-        });
-        console.log("[*] Patch Title.InitializeAssetBundles -> instant complete");
-    })();
-    hook("Title.InitializeAssetBundles.log", 0x30A94DC, {
-        onEnter() { console.log("[Title] >>> InitializeAssetBundles called"); }
+    // Let it run naturally — observe HTTP/Octo requests it makes
+    hook("Title.InitializeAssetBundles", 0x30A94DC, {
+        onEnter() { console.log("[Title] >>> InitializeAssetBundles called (natural)"); }
     });
 
     // Title.LoadTextData — RVA: 0x30A9B80
-    // Returns UniTask<bool> (16 bytes) in registers.
-    // LayoutKind.Auto: x0 = [result(1)|pad(1)|token(2)|pad(4)], x1 = [source(8)]
-    // Completed with result=true: x0=1, x1=0 (source=null)
+    // Patched to return true — no text assets available (Octo returns empty list).
+    // Game uses fallback strings. Will implement proper asset serving later.
     (function() {
         const addr = libil2cpp.add(0x30A9B80);
         Memory.patchCode(addr, 16, code => {
             code.writeByteArray([
                 0x20, 0x00, 0x80, 0xd2, // mov x0, #1   (result = true at byte 0)
-                0x01, 0x00, 0x80, 0xd2, // mov x1, #0   (source = null)
+                0x01, 0x00, 0x80, 0xd2, // mov x1, #0   (source = null → completed)
                 0xc0, 0x03, 0x5f, 0xd6, // ret
                 0x1f, 0x20, 0x03, 0xd5  // nop
             ]);
         });
-        console.log("[*] Patch Title.LoadTextData -> instant complete (true)");
+        console.log("[*] Patch Title.LoadTextData -> instant true");
     })();
-    hook("Title.LoadTextData.log", 0x30A9B80, {
-        onEnter() { console.log("[Title] >>> LoadTextData called"); }
-    });
 
     // Title.OnTermOfServiceAdditionalWorldWideAsync — RVA: 0x30A9C6C
     // Let it run naturally — shows age verification and ads tracking dialogs
@@ -291,28 +278,17 @@ awaitLibil2cpp(() => {
     });
 
     // OctoManager.StartDbUpdate — RVA: 0x4C041B8
-    // static void StartDbUpdate(Action<DownloadError> onComplete, bool reset)
-    // Bypass the actual DB update but invoke the callback with null (no error).
-    // Action<T>.Invoke RVA: 0x4A3D2A8 — shared for reference-type T
-    hookReplace("OctoManager.StartDbUpdate", 0x4C041B8,
-        "void", ["pointer", "int"],
-        function(onComplete, reset) {
-            console.log("[OctoManager] StartDbUpdate BYPASSED — invoking callback with null (no error)");
-            if (!onComplete.isNull()) {
-                const actionInvoke = new NativeFunction(
-                    libil2cpp.add(0x4A3D2A8), "void", ["pointer", "pointer", "pointer"]
-                );
-                setTimeout(() => {
-                    try {
-                        actionInvoke(onComplete, ptr(0), ptr(0));
-                        console.log("[OctoManager] StartDbUpdate callback invoked OK");
-                    } catch(e) {
-                        console.log("[OctoManager] StartDbUpdate callback error: " + e);
-                    }
-                }, 100);
+    // Triggers DecryptAes bypass on first call (metadata guaranteed loaded by now)
+    let octoAesBypassed = false;
+    hook("OctoManager.StartDbUpdate", 0x4C041B8, {
+        onEnter(args) {
+            console.log(`[OctoManager] StartDbUpdate called naturally (callback=${args[0]} reset=${args[1]})`);
+            if (!octoAesBypassed) {
+                octoAesBypassed = true;
+                bypassDecryptAes();
             }
         }
-    );
+    });
 
     // ---- ENCRYPTION BYPASS ----
 
@@ -447,72 +423,96 @@ awaitLibil2cpp(() => {
 
     // ---- ASYNC STATE MACHINE TRACING ----
 
-    let tosCompleted = false;
-    let capturedFsmPtr = null;
-    let capturedMethodInfo = null;
+    // Jump table dump removed — was only needed for one-time analysis.
+    // State 12 entry: RVA 0x28f9a88 → body at 0x28fab4c
+    // tbnz at 0x28fab60 patched by PATCH1 below.
 
-    // Title.<OnTermOfService>d__40.MoveNext — RVA: 0x28F99A8
-    hook("OnTermOfService.MoveNext", 0x28F99A8, {
+    // OnTermOfService.MoveNext — NO Interceptor.attach!
+    // Interceptor trampoline breaks jump table dispatch inside MoveNext,
+    // preventing the binary patch at 0x28fab60 from executing.
+    // Rely on PATCH1 (Memory.patchCode) alone to force the TRUE path.
+
+    // Title.<SyncMasterDataAndUserData>d__5.MoveNext — RVA: 0x28FECBC
+    hook("SyncMasterDataAndUserData.MoveNext", 0x28FECBC, {
         onEnter(args) {
             try {
                 this.self = args[0];
                 const state = args[0].readS32();
-                console.log(`[TOS-FSM] MoveNext state=${state}`);
-            } catch(e) { console.log("[TOS-FSM] MoveNext called (err: " + e + ")"); }
+                console.log(`[SYNC-ALL] MoveNext state=${state}`);
+            } catch(e) { console.log("[SYNC-ALL] err: " + e); }
         },
         onLeave(retval) {
             try {
                 const newState = this.self.readS32();
-                console.log(`[TOS-FSM] MoveNext exit -> state=${newState}`);
-                if (newState === -2 && capturedFsmPtr && capturedMethodInfo) {
-                    tosCompleted = true;
-                    console.log(`[TOS-FSM] COMPLETED — scheduling RequestUpdate(7) + FSM[0x3a] set`);
-                    const fsmPtr = capturedFsmPtr;
-                    const methodInfo = capturedMethodInfo;
-                    try {
-                        const before = fsmPtr.add(0x3a).readU8();
-                        console.log(`[TOS-FSM] FSM[0x3a] before = ${before}`);
-                    } catch(e) {}
-                    setTimeout(() => {
-                        try {
-                            const nativeRequestUpdate = new NativeFunction(
-                                libil2cpp.add(0x423D24C), "void", ["pointer", "int", "pointer"]
-                            );
-                            nativeRequestUpdate(fsmPtr, 7, methodInfo);
-                            console.log("[TOS-FSM] RequestUpdate(7) OK!");
-                            const after = fsmPtr.add(0x3a).readU8();
-                            console.log(`[TOS-FSM] FSM[0x3a] after RequestUpdate = ${after}`);
-                            if (after === 0) {
-                                fsmPtr.add(0x3a).writeU8(1);
-                                console.log("[TOS-FSM] FSM[0x3a] forced to 1");
-                            }
-                        } catch(e) {
-                            console.log("[TOS-FSM] RequestUpdate(7) error: " + e);
-                        }
-                    }, 100);
+                console.log(`[SYNC-ALL] MoveNext exit -> state=${newState}`);
+            } catch(e) {}
+        }
+    });
+
+    // Title.<SyncMasterData>d__6.MoveNext — RVA: 0x28FEA2C
+    // <>8__1 (DisplayClass6_0) at +0x28, DisplayClass6_0.isError at +0x10
+    hook("SyncMasterData.MoveNext", 0x28FEA2C, {
+        onEnter(args) {
+            try {
+                this.self = args[0];
+                const state = args[0].readS32();
+                console.log(`[SYNC-MASTER] MoveNext state=${state}`);
+                const displayClass = args[0].add(0x28).readPointer();
+                if (!displayClass.isNull()) {
+                    const isError = displayClass.add(0x10).readU8();
+                    console.log(`[SYNC-MASTER] isError=${isError} displayClass=${displayClass}`);
+                }
+            } catch(e) { console.log("[SYNC-MASTER] err: " + e); }
+        },
+        onLeave(retval) {
+            try {
+                const newState = this.self.readS32();
+                console.log(`[SYNC-MASTER] MoveNext exit -> state=${newState}`);
+                const displayClass = this.self.add(0x28).readPointer();
+                if (!displayClass.isNull()) {
+                    const isError = displayClass.add(0x10).readU8();
+                    console.log(`[SYNC-MASTER] isError after=${isError}`);
+                }
+            } catch(e) {}
+        }
+    });
+
+    // Title.<SyncUserData>d__7.MoveNext — RVA: 0x28FF204
+    // <>8__1 (DisplayClass7_0) at +0x20, DisplayClass7_0.isError at +0x10
+    hook("SyncUserData.MoveNext", 0x28FF204, {
+        onEnter(args) {
+            try {
+                this.self = args[0];
+                const state = args[0].readS32();
+                console.log(`[SYNC-USER] MoveNext state=${state}`);
+                const displayClass = args[0].add(0x20).readPointer();
+                if (!displayClass.isNull()) {
+                    const isError = displayClass.add(0x10).readU8();
+                    console.log(`[SYNC-USER] isError=${isError} displayClass=${displayClass}`);
+                }
+            } catch(e) { console.log("[SYNC-USER] err: " + e); }
+        },
+        onLeave(retval) {
+            try {
+                const newState = this.self.readS32();
+                console.log(`[SYNC-USER] MoveNext exit -> state=${newState}`);
+                const displayClass = this.self.add(0x20).readPointer();
+                if (!displayClass.isNull()) {
+                    const isError = displayClass.add(0x10).readU8();
+                    console.log(`[SYNC-USER] isError after=${isError}`);
                 }
             } catch(e) {}
         }
     });
 
     // FiniteStateMachineTask<Int32Enum,Int32Enum>.DoUpdate.MoveNext — RVA: 0x423B594
-    let doUpdateDumpCount = 0;
+    let doUpdateLogAll = false;
     hook("FSM.DoUpdate.MoveNext", 0x423B594, {
         onEnter(args) {
             try {
                 const state = args[0].readS32();
-                if (state !== 0) console.log(`[FSM-DoUpdate] MoveNext state=${state}`);
-                if (state === 0 && tosCompleted && doUpdateDumpCount < 5) {
-                    doUpdateDumpCount++;
-                    try {
-                        const self = args[0];
-                        const fsmRef = self.add(0x18).readPointer();
-                        const byte3a = fsmRef.add(0x3a).readU8();
-                        const byte38 = fsmRef.add(0x38).readU8();
-                        const field20 = self.add(0x20).readS32();
-                        console.log(`[FSM-DoUpdate] state=0 post-TOS #${doUpdateDumpCount}: FSM[0x38]=${byte38} FSM[0x3a]=${byte3a} self[0x20]=${field20}`);
-                    } catch(ex) { console.log(`[FSM-DoUpdate] dump err: ${ex}`); }
-                }
+                if (doUpdateLogAll || state !== 0)
+                    console.log(`[FSM-DoUpdate] MoveNext state=${state} self=${args[0]}`);
             } catch(e) {}
         }
     });
@@ -550,11 +550,6 @@ awaitLibil2cpp(() => {
             try {
                 const event = args[1].toInt32();
                 console.log(`[FSM] RequestUpdate event=${event} fsm=${args[0]}`);
-                if (event === 8) {
-                    capturedFsmPtr = args[0];
-                    capturedMethodInfo = args[2];
-                    console.log(`[FSM] Captured FSM=${capturedFsmPtr} MethodInfo=${capturedMethodInfo}`);
-                }
             } catch(e) { console.log(`[FSM] RequestUpdate called`); }
         }
     });
@@ -571,6 +566,87 @@ awaitLibil2cpp(() => {
     hook("Generator.OnEntrypoint", 0x2E966A8, {
         onEnter(args) { console.log("[Generator] OnEntrypoint!"); }
     });
+
+    // ---- OCTO AES DECRYPTION BYPASS ----
+    // Called lazily from OctoManager.StartDbUpdate (metadata loaded by then).
+    // Uses scanSync for synchronous guarantee — bypass is active before HTTP response arrives.
+    function bypassDecryptAes() {
+        try {
+            const il2cppMod = Process.getModuleByName("libil2cpp.so");
+            const pattern = "44 65 63 72 79 70 74 41 65 73 00"; // "DecryptAes\0"
+            let strAddrs = [];
+
+            const ranges = Process.enumerateRanges("r--");
+            console.log(`[*] Scanning ${ranges.length} memory ranges for DecryptAes (sync)...`);
+            for (const range of ranges) {
+                let matches;
+                try { matches = Memory.scanSync(range.base, range.size, pattern); } catch(e) { continue; }
+                for (const m of matches) {
+                    strAddrs.push(m.address);
+                    console.log(`[*] Found 'DecryptAes' at ${m.address}`);
+                }
+            }
+            console.log(`[*] Scan done, ${strAddrs.length} DecryptAes strings found`);
+            if (strAddrs.length === 0) return;
+
+            for (const strAddr of strAddrs) {
+                const hexBytes = [];
+                for (let b = 0; b < 8; b++) {
+                    hexBytes.push(("0" + ((strAddr.shr(b * 8)).and(0xFF).toUInt32()).toString(16)).slice(-2));
+                }
+                const ptrPattern = hexBytes.join(" ");
+
+                for (const r of Process.enumerateRanges("rw-")) {
+                    let refs;
+                    try { refs = Memory.scanSync(r.base, r.size, ptrPattern); } catch(e) { continue; }
+                    for (const ref of refs) {
+                        const miCandidate = ref.address.sub(0x10);
+                        try {
+                            const methodPtr = miCandidate.readPointer();
+                            const rva = methodPtr.sub(il2cppMod.base);
+                            if (rva.compare(ptr(0)) > 0 && rva.compare(ptr(il2cppMod.size)) < 0) {
+                                console.log(`[*] DecryptAes: MethodInfo=${miCandidate} RVA=0x${rva.toString(16)}`);
+                                Interceptor.replace(methodPtr, new NativeCallback(function(thisArg, bytes) {
+                                    console.log("[OctoAES] DecryptAes bypassed");
+                                    return bytes;
+                                }, "pointer", ["pointer", "pointer"]));
+                                console.log("[*] BYPASSED OctoAPI.DecryptAes!");
+                            }
+                        } catch(e) {}
+                    }
+                }
+            }
+        } catch(e) {
+            console.log("[!] Octo AES bypass error: " + e);
+        }
+    }
+
+    // PATCH: SyncMasterDataAndUserData → instant UniTask<bool>(true)
+    // RVA: 0x30A8760. Replaces entire wrapper to return completed true.
+    // Skips gRPC sync calls but forces TOS state 12 to get bool=TRUE.
+    // Same pattern as LoadTextData and FetchTermsOfServiceVersion patches.
+    (function() {
+        const addr = libil2cpp.add(0x30A8760);
+        Memory.patchCode(addr, 12, code => {
+            code.writeByteArray([
+                0x20, 0x00, 0x80, 0xd2, // mov x0, #1   (result = true)
+                0x01, 0x00, 0x80, 0xd2, // mov x1, #0   (source = null → completed)
+                0xc0, 0x03, 0x5f, 0xd6  // ret
+            ]);
+        });
+        console.log("[*] Patch SyncMasterDataAndUserData -> instant true");
+    })();
+
+    // PATCH 1 kept as belt-and-suspenders: force TRUE path at tbnz (RVA 0x28fab60)
+    const patch1Addr = libil2cpp.add(0x28fab60);
+    const truePath = libil2cpp.add(0x28fac74);
+    Memory.patchCode(patch1Addr, 8, code => {
+        const w = new Arm64Writer(code, { pc: patch1Addr });
+        w.putInstruction(0x52800020); // mov w0, #1
+        w.putBImm(truePath);
+        w.flush();
+    });
+    console.log(`[*] PATCH1: tbnz→(mov w0,#1; b TRUE) at ${patch1Addr}`);
 
     console.log("\n[*] All IL2CPP hooks installed!");
     console.log(`[*] Target: ${SERVER_ADDRESS}:${SERVER_PORT}`);
@@ -756,9 +832,8 @@ awaitLibil2cpp(() => {
     );
 
     // TitleStubDelegator.IsValidTermOfService — RVA: 0x28FFAF8
-    // Force return true — TOS is already accepted, skip dialog flow.
-    // The dialog path breaks because our other patches (InitializeAssetBundles,
-    // LoadTextData) don't actually load the resources the dialog flow needs.
+    // Force true to trigger TOS + age verification dialogs.
+    // These dialogs set consent flags that OnTermOfService needs for proper completion.
     hook("TitleStubDelegator.IsValidTermOfService", 0x28FFAF8, {
         onLeave(retval) {
             const orig = retval.toInt32();
