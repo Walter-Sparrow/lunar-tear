@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package api;
+
+option go_package = "lunar-tear/server/gen/proto";
+
+import "google/protobuf/timestamp.proto";
+
+message DiffData {
+  string update_records_json = 1;
+  string delete_keys_json = 2;
+}
+
+message ApiConfig {
+  string hostname = 1;
+  int32 port = 2;
+}
+
+message OctoConfig {
+  int32 version = 1;
+  int32 app_id = 2;
+  string client_secret_key = 3;
+  string aes_key = 4;
+  string url = 5;
+}
+
+message WebViewConfig {
+  string base_url = 1;
+}
+
+message MasterDataConfig {
+  string url_format = 1;
+}
+
+message UserDeviceInherent {
+  string identifier_for_vendor = 1;
+  string device_token = 2;
+  string mac_address = 3;
+  string registration_id = 4;
+}

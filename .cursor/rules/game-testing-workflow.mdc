@@ -1,0 +1,25 @@
+---
+description: Workflow rules for testing the game with Frida instrumentation
+alwaysApply: true
+---
+
+# Game Testing Workflow
+
+## Launching the Game
+
+Use the `frida-game-launch` skill. Key points:
+
+- **Command**: `tail -f /dev/null | frida -Uf ...` (keeps stdin open)
+- After cold boot: run `adb root` + start `frida-server` first
+- Always `block_until_ms: 0` and `required_permissions: ["all"]`
+
+## After Launch
+
+1. **WAIT for the user** to click through dialogs and say "смотри" (or equivalent) before reading logs.
+2. Never use `sleep` to wait — just tell the user you're waiting and stop until they respond.
+3. Never read terminal output proactively after launch — the user will tell you when.
+
+## Project Context
+
+Read `docs/PROGRESS.md` at the start of each session for current state, blockers, and next steps.
+The project strategy is **minimal client patches, server-first implementation**.

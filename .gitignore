@@ -1,0 +1,31 @@
+# IDE / Cursor
+.cursor/projects/
+.cursor/rules/*.mdc.bak
+
+# Build artifacts
+server/bin/
+server/tmp/
+server/lunar-tear
+
+# Go
+server/vendor/
+
+# Certs (regenerate per-environment)
+server/certs/
+
+# Server assets (binary data, too large for git)
+server/assets/
+
+# Client APK and dumps
+client/
+tools/
+
+# Generated protobuf (regenerate with protoc)
+server/gen/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
