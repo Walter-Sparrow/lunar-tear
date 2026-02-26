@@ -58,11 +58,26 @@ func main() {
 	pb.RegisterConfigServiceServer(grpcServer, service.NewConfigServiceServer(*host, int32(*grpcPort)))
 	pb.RegisterDataServiceServer(grpcServer, service.NewDataServiceServer())
 	pb.RegisterTutorialServiceServer(grpcServer, service.NewTutorialServiceServer())
+	pb.RegisterGamePlayServiceServer(grpcServer, service.NewGamePlayServiceServer())
+	pb.RegisterQuestServiceServer(grpcServer, service.NewQuestServiceServer())
+	pb.RegisterNotificationServiceServer(grpcServer, service.NewNotificationServiceServer())
 
-	// Also register DataService under the client's expected full package path
+	// Also register services under the client's expected full package paths
 	dataAltDesc := pb.DataService_ServiceDesc
 	dataAltDesc.ServiceName = "apb.api.data.DataService"
 	grpcServer.RegisterService(&dataAltDesc, service.NewDataServiceServer())
+
+	gameplayAltDesc := pb.GamePlayService_ServiceDesc
+	gameplayAltDesc.ServiceName = "apb.api.gameplay.GamePlayService"
+	grpcServer.RegisterService(&gameplayAltDesc, service.NewGamePlayServiceServer())
+
+	questAltDesc := pb.QuestService_ServiceDesc
+	questAltDesc.ServiceName = "apb.api.quest.QuestService"
+	grpcServer.RegisterService(&questAltDesc, service.NewQuestServiceServer())
+
+	notifAltDesc := pb.NotificationService_ServiceDesc
+	notifAltDesc.ServiceName = "apb.api.notification.NotificationService"
+	grpcServer.RegisterService(&notifAltDesc, service.NewNotificationServiceServer())
 
 	reflection.Register(grpcServer)
 

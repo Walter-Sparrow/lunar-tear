@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package api;
+
+option go_package = "lunar-tear/server/gen/proto";
+
+import "common.proto";
+import "google/protobuf/empty.proto";
+
+service NotificationService {
+  rpc GetHeaderNotification(google.protobuf.Empty) returns (GetHeaderNotificationResponse);
+}
+
+message GetHeaderNotificationResponse {
+  int32 gift_not_receive_count = 1;
+  int32 friend_request_receive_count = 2;
+  bool is_exist_unread_information = 3;
+  map<string, DiffData> diff_user_data = 4;
+}

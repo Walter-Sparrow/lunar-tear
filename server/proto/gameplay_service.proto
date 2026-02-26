@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package api;
+
+option go_package = "lunar-tear/server/gen/proto";
+
+import "google/protobuf/timestamp.proto";
+import "common.proto";
+
+service GamePlayService {
+  rpc CheckBeforeGamePlay(CheckBeforeGamePlayRequest) returns (CheckBeforeGamePlayResponse);
+}
+
+message CheckBeforeGamePlayRequest {
+  string tr = 1;
+  int32 voice_client_system_language_type_id = 2;
+  int32 text_client_system_language_type_id = 3;
+}
+
+message MenuGachaBadgeInfo {
+  google.protobuf.Timestamp display_start_datetime = 1;
+  google.protobuf.Timestamp display_end_datetime = 2;
+}
+
+message CheckBeforeGamePlayResponse {
+  bool is_exist_unread_pop = 1;
+  repeated MenuGachaBadgeInfo menu_gacha_badge_info = 2;
+  map<string, DiffData> diff_user_data = 3;
+}

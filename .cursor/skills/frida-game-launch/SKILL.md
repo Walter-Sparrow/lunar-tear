@@ -23,8 +23,10 @@ Verify: `adb shell id` should show `uid=0(root)`. `frida-ps -U` should list proc
 **IMPORTANT**: Frida CLI exits immediately without a TTY. Pipe `tail -f /dev/null` to keep stdin open.
 
 ```bash
-export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH" && adb shell am force-stop com.square_enix.android_googleplay.nierspww && sleep 1 && tail -f /dev/null | frida -Uf com.square_enix.android_googleplay.nierspww -l /Users/kretts/FunStuff/lunar-tear/frida/hooks.js 2>&1
+cp /Users/kretts/FunStuff/lunar-tear/frida/hooks.js /tmp/hooks_frozen.js && export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH" && adb shell am force-stop com.square_enix.android_googleplay.nierspww && sleep 1 && tail -f /dev/null | frida -Uf com.square_enix.android_googleplay.nierspww -l /tmp/hooks_frozen.js 2>&1
 ```
+
+**Why /tmp copy?** Frida's `-l` auto-reloads on file changes. Copying to /tmp prevents hot-reload when editing hooks.js during a session.
 
 Run as background command (`block_until_ms: 0`) with `required_permissions: ["all"]`.
 
