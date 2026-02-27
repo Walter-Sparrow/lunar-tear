@@ -45,15 +45,17 @@ func (s *DataServiceServer) GetUserDataNameV2(ctx context.Context, _ *emptypb.Em
 
 func (s *DataServiceServer) GetUserData(ctx context.Context, req *pb.UserDataGetRequest) (*pb.UserDataGetResponse, error) {
 	log.Printf("[DataService] GetUserData: tables=%v", req.TableName)
+	log.Printf("[DataService] Available tables: user_main_quest_main_flow_status, user_main_quest_flow_status, etc.")
 
 	defaults := userdata.DefaultUserDataJSON(defaultUserID)
 	result := make(map[string]string)
 
 	for _, table := range req.TableName {
 		if data, ok := defaults[table]; ok {
-			log.Printf("[DataService]   %s -> %s", table, data)
+			log.Printf("[DataService]   %s -> %s (len=%d)", table, data, len(data))
 			result[table] = data
 		} else {
+			log.Printf("[DataService]   %s -> [] (empty, not in defaults)", table)
 			result[table] = "[]"
 		}
 	}

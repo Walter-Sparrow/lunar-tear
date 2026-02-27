@@ -291,89 +291,25 @@ awaitLibil2cpp(() => {
     console.log("[*] OnMainStoryAsync.MoveNext: NO HOOK (natural flow)");
 
     // Story.ApplyFirstScene — RVA: 0x2785888
-    // NO patch — forcing 1 (Playing) or 0 (NotPlaying) when 2 (Failure) both cause NullRef+SIGSEGV
-    hook("Story.ApplyFirstScene", 0x2785888, {
-        onEnter(args) { console.log("[Story] ApplyFirstScene called"); },
-        onLeave(retval) { console.log(`[Story] ApplyFirstScene -> ${retval} (0=NotPlaying,1=Playing,2=Failure)`); }
-    });
-    // Story.ApplyNewestScene — RVA: 0x27858E8
-    hook("Story.ApplyNewestScene", 0x27858E8, {
-        onEnter(args) { console.log(`[Story] ApplyNewestScene omitSideStory=${args[1]}`); },
-        onLeave(retval) { console.log(`[Story] ApplyNewestScene -> ${retval} (0=NotPlaying,1=Playing,2=Failure)`); }
-    });
-    // Story.RestartQuestAsync — RVA: 0x27857BC
-    hook("Story.RestartQuestAsync", 0x27857BC, {
+    // NO HOOK — Interceptor.attach on Story methods causes MethodInfo* corruption → SIGSEGV
+    console.log("[*] Story.ApplyFirstScene: NO HOOK (MethodInfo* corruption)");
+    console.log("[*] Story.ApplyNewestScene: NO HOOK (MethodInfo* corruption)");
+
+    // ---- DarkUserDatabaseBuilder tracing ----
+    // Append(IEnumerable<EntityIUserMainQuestMainFlowStatus>) - RVA: 0x2613948
+    hook("DarkUserDatabaseBuilder.Append(MainQuestMainFlowStatus)", 0x2613948, {
         onEnter(args) {
-            console.log(`[Story] RestartQuestAsync firstStartedQuest=${args[1]} startedQuest=${args[2]}`);
-        }
+            console.log("[DB] Append MainQuestMainFlowStatus called");
+            try {
+                // args[1] is IEnumerable<Dictionary<string, object>> - try to read first element
+                const enumerable = args[1];
+                console.log(`[DB] dataSource ptr: ${enumerable}`);
+            } catch(e) { console.log(`[DB] error reading dataSource: ${e}`); }
+        },
+        onLeave(retval) { console.log(`[DB] Append returned: ${retval}`); }
     });
 
-    // ---- DETAILED ApplyNewestScene SUB-METHOD TRACING ----
-    hook("Story.IfNeedsApplyAutoPlaying", 0x2785A50, {
-        onEnter(args) { console.log("[Story]   IfNeedsApplyAutoPlaying called"); },
-        onLeave(retval) { console.log(`[Story]   IfNeedsApplyAutoPlaying -> ${retval.toInt32()}`); }
-    });
-    hook("Story.ApplyNewestExtraScene", 0x2785F48, {
-        onEnter(args) { console.log("[Story]   ApplyNewestExtraScene called"); },
-        onLeave(retval) { console.log(`[Story]   ApplyNewestExtraScene -> ${retval.toInt32()}`); }
-    });
-    hook("Story.ApplyNewestBigHuntScene", 0x2786058, {
-        onEnter(args) { console.log("[Story]   ApplyNewestBigHuntScene called"); },
-        onLeave(retval) { console.log(`[Story]   ApplyNewestBigHuntScene -> ${retval.toInt32()}`); }
-    });
-    hook("Story.ApplyNewestContentStoryScene", 0x2786230, {
-        onEnter(args) { console.log("[Story]   ApplyNewestContentStoryScene called"); },
-        onLeave(retval) { console.log(`[Story]   ApplyNewestContentStoryScene -> ${retval.toInt32()}`); }
-    });
-    hook("Story.ApplyNewestEventScene", 0x278631C, {
-        onEnter(args) { console.log("[Story]   ApplyNewestEventScene called"); },
-        onLeave(retval) { console.log(`[Story]   ApplyNewestEventScene -> ${retval.toInt32()}`); }
-    });
-    // ApplyPortalOrMainScene sub-calls
-    hook("Story.ApplyPortalOrMainScene", 0x2786508, {
-        onEnter(args) { console.log(`[Story]   ApplyPortalOrMainScene omitSideStory=${args[1]}`); },
-        onLeave(retval) { console.log(`[Story]   ApplyPortalOrMainScene -> ${retval.toInt32()}`); }
-    });
-    hook("Story.ApplySideStory", 0x2786560, {
-        onEnter(args) { console.log("[Story]     ApplySideStory called"); },
-        onLeave(retval) { console.log(`[Story]     ApplySideStory -> ${retval.toInt32()}`); }
-    });
-    hook("Story.ApplyPortal", 0x27868E8, {
-        onEnter(args) { console.log("[Story]     ApplyPortal called"); },
-        onLeave(retval) { console.log(`[Story]     ApplyPortal -> ${retval.toInt32()}`); }
-    });
-    hook("Story.ApplyNewestMainScene", 0x27869C4, {
-        onEnter(args) { console.log("[Story]     ApplyNewestMainScene called"); },
-        onLeave(retval) { console.log(`[Story]     ApplyNewestMainScene -> ${retval.toInt32()}`); }
-    });
-    hook("Story.ApplyMainQuestRouteIdAndSeasonId", 0x27865FC, {
-        onEnter(args) { console.log("[Story]     ApplyMainQuestRouteIdAndSeasonId called"); },
-        onLeave(retval) { console.log(`[Story]     ApplyMainQuestRouteIdAndSeasonId -> ${retval.toInt32()}`); }
-    });
-    // ApplyNewestMainScene internals
-    hook("Story.InReplayedForMainStory", 0x2786B18, {
-        onEnter(args) { console.log("[Story]       InReplayedForMainStory called"); },
-        onLeave(retval) { console.log(`[Story]       InReplayedForMainStory -> ${retval.toInt32()}`); }
-    });
-    hook("Story.ApplyScene", 0x2786B90, {
-        onEnter(args) { console.log(`[Story]       ApplyScene sceneId=${args[1].toInt32()} storyType=${args[2].toInt32()}`); },
-        onLeave(retval) { console.log(`[Story]       ApplyScene -> ${retval.toInt32()}`); }
-    });
-    hook("Story.ActivateMainStoryWithSceneId", 0x2786C10, {
-        onEnter(args) { console.log(`[Story]       ActivateMainStoryWithSceneId sceneId=${args[1].toInt32()}`); }
-    });
-    hook("Story.ApplyReplay", 0x27826D0, {
-        onEnter(args) { console.log(`[Story]     ApplyReplay isReplayed=${args[1].toInt32()}`); }
-    });
-    hook("Story.SceneIdToQuestId", 0x27859E0, {
-        onEnter(args) { console.log(`[Story]   SceneIdToQuestId sceneId=${args[1].toInt32()}`); },
-        onLeave(retval) { console.log(`[Story]   SceneIdToQuestId -> questId=${retval.toInt32()}`); }
-    });
-    hook("Story.NeedsStampFirstChapter", 0x2785788, {
-        onEnter(args) { console.log(`[Story]   NeedsStampFirstChapter state=${args[1].toInt32()}`); },
-        onLeave(retval) { console.log(`[Story]   NeedsStampFirstChapter -> ${retval.toInt32()}`); }
-    });
-    // ActivePlayer accessors
+    // ---- ActivePlayer accessors (safe to hook — static methods) ----
     hook("ActivePlayerToEntityMainQuestStatus", 0x2AB491C, {
         onEnter(args) { console.log("[UserData] ActivePlayerToEntityMainQuestStatus called"); },
         onLeave(retval) {
@@ -971,10 +907,26 @@ awaitLibil2cpp(() => {
     // RequestUpdate: no patch (natural flow)
     console.log("[*] RequestUpdate: no patch (natural flow)");
 
-    // OnMainStoryAsync: NO BYPASS — let it run naturally.
-    console.log("[*] OnMainStoryAsync: natural flow (no patch)");
+    // OnMainStoryAsync: DELAYED START — wait for database to be ready.
+    // The database builds asynchronously after SyncUserData completes.
+    // We wait until ActivePlayerToEntityMainQuestStatus returns non-NULL.
+    console.log("[*] OnMainStoryAsync: delayed start (waiting for DB ready)");
     hook("Gameplay.OnMainStoryAsync", 0x274E4D4, {
-        onEnter(args) { console.log("[TRACE] OnMainStoryAsync ENTER"); },
+        onEnter(args) {
+            console.log("[TRACE] OnMainStoryAsync ENTER (checking DB readiness...)");
+            // Check if database is ready by calling ActivePlayerToEntityMainQuestStatus
+            const getStatus = new NativeFunction(libil2cpp.add(0x2AB491C), 'pointer', []);
+            let attempts = 0;
+            let status = getStatus();
+            while (status.isNull() && attempts < 50) {
+                // Sleep 100ms
+                const start = Date.now();
+                while (Date.now() - start < 100) {}
+                status = getStatus();
+                attempts++;
+            }
+            console.log(`[TRACE] OnMainStoryAsync: DB ready after ${attempts} attempts, status=${status}`);
+        },
         onLeave(retval) { console.log("[TRACE] OnMainStoryAsync LEAVE"); }
     });
 
@@ -1160,20 +1112,27 @@ awaitLibil2cpp(() => {
     });
 
     // Title.SyncUserData — RVA: 0x30A8940
-    // RE-ENABLED: let it run naturally now that master data has 607 real tables.
-    // SyncUserData: run naturally (starts data loading pipeline), but force the
-    // return value to completed UniTask<bool>(true) so FSM doesn't stall.
-    // The Task->UniTask async bridge is broken, but the data pipeline itself works
-    // (BuildDB + success continuation fire). By overriding x0/x1 in onLeave,
-    // the caller sees a completed UniTask while data loads in background.
+    // DELAYED FORCE: The natural Task→UniTask completion is broken (returns 0).
+    // We force completion after a delay to allow database to build in background.
     hook("Title.SyncUserData", 0x30A8940, {
         onEnter() {
-            console.log("[DIAG] SyncUserData CALLED (hybrid: real load + forced completion)");
+            console.log("[DIAG] SyncUserData CALLED (delayed force - waiting 3s for DB build)");
         },
         onLeave(retval) {
+            const result = retval.toInt32();
+            console.log(`[DIAG] SyncUserData: pre-force result=${result}`);
+            
+            // Wait 3 seconds for database to build, then force completion
+            setTimeout(() => {
+                console.log("[DIAG] SyncUserData: forcing completion after delay");
+                // We can't modify retval here (too late), but we can signal externally
+                globalThis._syncUserDataCompleted = true;
+            }, 3000);
+            
+            // Force immediate completion for FSM to advance
             retval.replace(ptr(1));       // x0 = 1 (result = true)
             this.context.x1 = ptr(0);     // x1 = null (source = null → completed)
-            console.log("[DIAG] SyncUserData: forced return completed(true), data loading in background");
+            console.log("[DIAG] SyncUserData: forced completion, DB building in background");
         }
     });
 

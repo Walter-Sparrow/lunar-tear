@@ -60,35 +60,53 @@ Android Device/Emulator (patched APK)
 | **Live tracing revealed NULL ActivePlayerToEntityMainQuestStatus** | **CRITICAL FINDING** |
 | **Complete call chain mapped via runtime logs** | **DONE** |
 
-## Current State: ApplyNewestScene Returns Failure(2) — But Main Quest Path IS Reached
+## Strategic Reassessment: Too Many Patches, Wrong Focus
 
-### The Problem
-**UPDATED after tracing run**: `ApplyNewestScene` DOES call `ApplyPortalOrMainScene` internally (after all "extra" checks fail). However, `ActivePlayerToEntityMainQuestStatus()` returns **NULL** because `user_main_quest_main_flow_status` table is empty.
+### The Problem with Current Approach
+We've spent extensive time trying to "heal" the game through Frida hooks — forcing completions, bypassing methods, patching return values. This is **not sustainable** for the actual goal:
 
-**Call Chain (Confirmed via Live Tracing):**
-```
-ApplyNewestScene
-  → IfNeedsApplyAutoPlaying → false
-  → ApplyNewestExtraScene → false
-  → ApplyNewestBigHuntScene → false
-  → ApplyNewestContentStoryScene → false
-  → ApplyNewestEventScene → false
-  → ApplyPortalOrMainScene (YES, it IS called!)
-    → ApplySideStory → false
-    → ApplyPortal → false
-    → ApplyNewestMainScene
-      → ActivePlayerToEntityMainQuestStatus → NULL ← ROOT CAUSE
-      → return false
-    → return Failure(2)
-```
+**Goal**: Minimal APK patches (host redirect only) + server implementation → working home screen  
+**Current**: Dozens of Frida hooks, deep reverse engineering of FSM internals, trying to make broken async flows work
 
-Despite Failure(2), the game continues:
-- `NeedsStampFirstChapter state=2 → 1` (returns true!)
-- `ActivateMainStoryWithSceneId(sceneId=2)` fires
-- All gRPC calls succeed (UpdateSceneProgress → StartQuest ×2 → FinishQuest → FinishAutoOrbit)
-- But FSM stays: `gcs=5(Title) gns=4` (stuck in transition)
+### Reality Check
+1. **Frida is dev-time only** — we cannot ship Frida with the APK
+2. **Every patch is technical debt** — harder to maintain, breaks with updates
+3. **We're debugging the wrong layer** — instead of understanding what the server *should* provide, we're patching client symptoms
 
-**Root Cause**: Empty `user_main_quest_main_flow_status` table → NULL ActivePlayer status → ApplyNewestMainScene fails → but game tries to continue anyway via alternate path → FSM transition hangs post-quest.
+### Root Cause Analysis (Correct)
+The `ActivePlayerToEntityMainQuestStatus() -> NULL` issue isn't about data format — **server returns correct JSON**. The real issue:
+- `SyncUserData` Task→UniTask bridge is broken (client-side async infrastructure)
+- `DarkUserDatabaseBuilder` never builds the database
+- This is a **client-side bug with our setup**, not a server data issue
+
+### Correct Path Forward
+1. **Minimal APK patches only**:
+   - Host redirect (getaddrinfo or URL patch)
+   - SSL bypass (if needed)
+   - That's it — no method patching, no FSM manipulation
+
+2. **Server provides natural responses**:
+   - Real master data (working ✓)
+   - User data in format client expects (JSON, working ✓)
+   - gRPC services that make sense for game flow
+
+3. **Accept natural game flow**:
+   - If game expects certain data → provide it
+   - If game expects certain sequence → implement it
+   - Don't bypass — implement
+
+### What We Should NOT Be Doing
+- ❌ Hooking Story.ApplyFirstScene/ApplyNewestScene
+- ❌ Patching OnMainStoryAsync completion
+- ❌ Forcing FSM flags
+- ❌ Bypassing WaitCompletionScene
+- ❌ Complex async state machine manipulation
+
+### What We SHOULD Be Doing
+- ✅ Understanding exact server→client contract
+- ✅ Implementing proper QuestService responses
+- ✅ Ensuring user data populates MemoryDatabase naturally
+- ✅ Testing with minimal patches only
 
 ### Call Chain (Confirmed via Disassembly)
 ```
@@ -194,13 +212,82 @@ Found all BL targets. **Key discovery**: OnTitleAsync only calls RunTitle, FSM.R
     
     Added comprehensive runtime tracing hooks for all sub-methods + `ActivePlayerToEntityMainQuestStatus` return value inspection. **Next**: run game with tracing to confirm which sub-methods fire and what values they return.
 
-### What Has NOT Been Tried Yet
-1. ~~Keeping OnMainStoryAsync alive (not patched) + fixing all hangs one by one~~ — ONGOING. Natural flow runs.
-2. ~~Providing proper user_main_quest_* tables in initial GetUserData~~ — DONE. Data received.
-3. ~~Force ApplyFirstScene/ApplyNewestScene return value~~ — FAILED (1→crash, 0→crash). Reverted.
-4. ~~Understanding WHERE ApplyPortalOrMainScene is called~~ — **FOUND!** It IS called from inside ApplyNewestScene (call chain confirmed via tracing). See log analysis below.
-5. **Fixing NULL ActivePlayerToEntityMainQuestStatus** — CRITICAL FINDING from tracing run. The method returns NULL (no user data), causing ApplyNewestMainScene to return false, causing Failure(2).
-6. **Making Failure(2) path work** — Despite Failure(2), `NeedsStampFirstChapter` returns true (1), `ActivateMainStoryWithSceneId(sceneId=2)` fires, and all gRPC calls complete! But FSM stays in Title state. Need to investigate why transition to MainStory doesn't complete.
+## Revised Plan: Minimal Viable Product
+
+### Phase 1: Clean Slate (Next Session)
+1. **Strip Frida hooks to minimum**:
+   - Keep: DNS redirect, SSL bypass (for dev testing)
+   - Remove: All Story/Gameplay/FSM hooks
+   - Remove: All method bypasses
+   
+2. **Test natural flow with just server data**:
+   - Does game reach home screen with just JSON data from server?
+   - If no → identify ONE blocking point
+   - Fix that ONE point on server side
+
+### Phase 2: APK Patching Strategy
+**For production APK (no Frida)**:
+1. **libil2cpp.so patches** (static, done once):
+   - Patch getaddrinfo to return our IP for nierreincarnation.com
+   - Patch ToNativeCredentials to return null (SSL bypass)
+   - Optional: Patch UnityWebRequest to downgrade HTTPS→HTTP
+
+2. **No runtime hooks** — everything else works naturally
+
+### Phase 3: Server Implementation
+**Focus on what game actually needs** (not what we think it needs):
+
+1. **Current working** (keep):
+   - UserService (Auth, Register, GameStart)
+   - DataService (MasterData version, UserData)
+   - GamePlayService (CheckBeforeGamePlay)
+   - QuestService (UpdateSceneProgress, StartQuest, FinishQuest)
+
+2. **Investigate and fix**:
+   - **QuestService.DiffUserData** — does client expect this after quest?
+   - **Real user data format** — not JSON vs msgpack, but field names/structure
+   - **What happens after FinishAutoOrbit?** — what service/screen comes next?
+
+3. **Accept if game has bugs**:
+   - If client's Task→UniTask is broken with our server → that's a client bug
+   - We may need ONE minimal patch to fix that specific client issue
+   - Not 50 patches to work around every symptom
+
+### Success Criteria
+- Game reaches home screen (Mama area)
+- No Frida running (or minimal 2-3 hooks for dev only)
+- Server provides natural responses
+- APK has only host redirect + SSL patches
+
+### CRITICAL FINDING: Data Format Tests (2026-02-27 Session)
+
+**Test 1: Plain JSON (WORKS - data delivered to client)**
+- Server returns: `[{"UserId":1001,"CurrentMainQuestRouteId":1,...}]`
+- Client accepts and parses the data
+- But `ActivePlayerToEntityMainQuestStatus() -> NULL`
+
+**Test 2: MessagePack + Base64 (CRASH)**
+- Server returns base64(msgpack(data))
+- Client crashes immediately on `ActivePlayerToEntityMainQuestStatus` call
+- Stack trace: SIGSEGV at il2cpp+0x2785368 (Story.ApplyFirstScene area)
+
+**Conclusion**: Client expects JSON format, NOT msgpack. But even with correct JSON data, the `ActivePlayerToEntityMainQuestStatus()` accessor returns NULL. This means:
+1. Data is received but not stored in MemoryDatabase properly, OR
+2. Table key mismatch between server and client, OR  
+3. Data is stored but accessor method fails to find it
+
+**Root Cause Analysis:**
+The `ActivePlayerToEntityMainQuestStatus` method calls:
+```csharp
+DatabaseDefine.User.EntityIUserMainQuestMainFlowStatusTable.FindByUserId(userId)
+```
+
+This requires:
+1. `EntityIUserMainQuestMainFlowStatusTable` to be populated (from GetUserData response)
+2. Table to have primary index on UserId (verified in dump.cs - yes)
+3. UserId in request matches UserId in data (1001)
+
+Server logs confirm data is sent with UserId=1001. Client must be failing to populate the table.
 
 ### CRITICAL FINDING: Tracing Run Results (2026-02-26 Session)
 

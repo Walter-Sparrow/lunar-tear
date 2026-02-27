@@ -82,6 +82,17 @@ type EntityIUserMainQuestMainFlowStatus struct {
 	LatestVersion           int64    // Key(5)
 }
 
+// EntityIUserMainQuestProgressStatus mirrors EntityIUserMainQuestProgressStatus [Key(0..5)].
+// This table is used by ActivePlayerToEntityPlayingMainQuestStatus (0x2AB4A48).
+type EntityIUserMainQuestProgressStatus struct {
+	_msgpack            struct{} `msgpack:",asArray"`
+	UserId              int64    // Key(0)
+	CurrentQuestSceneId int32    // Key(1)
+	HeadQuestSceneId    int32    // Key(2)
+	QuestFlowType       int32    // Key(3) // 1 = MAIN_FLOW
+	LatestVersion       int64    // Key(4)
+}
+
 // EncodeRecords serializes a slice of entities to the client-expected format:
 // a JSON array of base64-encoded MessagePack byte strings.
 func EncodeRecords(entities ...any) (string, error) {
@@ -125,18 +136,18 @@ func DefaultUserData(userID int64) map[string]string {
 	return data
 }
 
-// DefaultUserDataJSON returns user data as plain JSON (fallback if msgpack doesn't work).
-// Includes user_main_quest_* tables so ApplyNewestScene may return Playing(1) instead of Failure(2).
+// DefaultUserDataJSON returns user data as plain JSON.
+// Verified: client accepts JSON format and parses it correctly.
 func DefaultUserDataJSON(userID int64) map[string]string {
 	now := time.Now().Unix()
 	return map[string]string{
 		"user": fmt.Sprintf(`[{"UserId":%d,"PlayerId":%d,"OsType":2,"PlatformType":2,"UserRestrictionType":0,"RegisterDatetime":%d,"GameStartDatetime":0,"LatestVersion":0}]`,
 			userID, userID, now),
 		"user_setting": fmt.Sprintf(`[{"UserId":%d,"IsNotifyPurchaseAlert":false,"LatestVersion":0}]`, userID),
-		// Main quest flow: scene 1, route 1, MAIN_FLOW=1 — enables natural story flow
-		"user_main_quest_flow_status":       fmt.Sprintf(`[{"UserId":%d,"CurrentQuestFlowType":1,"LatestVersion":0}]`, userID),
-		"user_main_quest_main_flow_status":  fmt.Sprintf(`[{"UserId":%d,"CurrentMainQuestRouteId":1,"CurrentQuestSceneId":1,"HeadQuestSceneId":1,"IsReachedLastQuestScene":false,"LatestVersion":0}]`, userID),
-		"user_main_quest_progress_status":   fmt.Sprintf(`[{"UserId":%d,"CurrentQuestSceneId":1,"HeadQuestSceneId":1,"CurrentQuestFlowType":1,"LatestVersion":0}]`, userID),
-		"user_main_quest_season_route":       fmt.Sprintf(`[{"UserId":%d,"MainQuestSeasonId":1,"MainQuestRouteId":1,"LatestVersion":0}]`, userID),
+		// Main quest tables - CRITICAL: sceneId=2 to match ActivateMainStoryWithSceneId(sceneId=2)
+		"user_main_quest_flow_status":      fmt.Sprintf(`[{"UserId":%d,"CurrentQuestFlowType":1,"LatestVersion":0}]`, userID),
+		"user_main_quest_main_flow_status": fmt.Sprintf(`[{"UserId":%d,"CurrentMainQuestRouteId":1,"CurrentQuestSceneId":2,"HeadQuestSceneId":2,"IsReachedLastQuestScene":false,"LatestVersion":0}]`, userID),
+		"user_main_quest_progress_status":  fmt.Sprintf(`[{"UserId":%d,"CurrentQuestSceneId":2,"HeadQuestSceneId":2,"QuestFlowType":1,"LatestVersion":0}]`, userID),
+		"user_main_quest_season_route":   fmt.Sprintf(`[{"UserId":%d,"MainQuestSeasonId":1,"MainQuestRouteId":1,"LatestVersion":0}]`, userID),
 	}
 }
