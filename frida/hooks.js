@@ -286,6 +286,179 @@ awaitLibil2cpp(() => {
         }
     });
 
+    // OnMainStoryAsync.MoveNext — NO HOOK
+    // MoveNext hooks corrupt async state machine jump tables.
+    console.log("[*] OnMainStoryAsync.MoveNext: NO HOOK (natural flow)");
+
+    // Story.ApplyFirstScene — RVA: 0x2785888
+    // NO patch — forcing 1 (Playing) or 0 (NotPlaying) when 2 (Failure) both cause NullRef+SIGSEGV
+    hook("Story.ApplyFirstScene", 0x2785888, {
+        onEnter(args) { console.log("[Story] ApplyFirstScene called"); },
+        onLeave(retval) { console.log(`[Story] ApplyFirstScene -> ${retval} (0=NotPlaying,1=Playing,2=Failure)`); }
+    });
+    // Story.ApplyNewestScene — RVA: 0x27858E8
+    hook("Story.ApplyNewestScene", 0x27858E8, {
+        onEnter(args) { console.log(`[Story] ApplyNewestScene omitSideStory=${args[1]}`); },
+        onLeave(retval) { console.log(`[Story] ApplyNewestScene -> ${retval} (0=NotPlaying,1=Playing,2=Failure)`); }
+    });
+    // Story.RestartQuestAsync — RVA: 0x27857BC
+    hook("Story.RestartQuestAsync", 0x27857BC, {
+        onEnter(args) {
+            console.log(`[Story] RestartQuestAsync firstStartedQuest=${args[1]} startedQuest=${args[2]}`);
+        }
+    });
+
+    // ---- DETAILED ApplyNewestScene SUB-METHOD TRACING ----
+    hook("Story.IfNeedsApplyAutoPlaying", 0x2785A50, {
+        onEnter(args) { console.log("[Story]   IfNeedsApplyAutoPlaying called"); },
+        onLeave(retval) { console.log(`[Story]   IfNeedsApplyAutoPlaying -> ${retval.toInt32()}`); }
+    });
+    hook("Story.ApplyNewestExtraScene", 0x2785F48, {
+        onEnter(args) { console.log("[Story]   ApplyNewestExtraScene called"); },
+        onLeave(retval) { console.log(`[Story]   ApplyNewestExtraScene -> ${retval.toInt32()}`); }
+    });
+    hook("Story.ApplyNewestBigHuntScene", 0x2786058, {
+        onEnter(args) { console.log("[Story]   ApplyNewestBigHuntScene called"); },
+        onLeave(retval) { console.log(`[Story]   ApplyNewestBigHuntScene -> ${retval.toInt32()}`); }
+    });
+    hook("Story.ApplyNewestContentStoryScene", 0x2786230, {
+        onEnter(args) { console.log("[Story]   ApplyNewestContentStoryScene called"); },
+        onLeave(retval) { console.log(`[Story]   ApplyNewestContentStoryScene -> ${retval.toInt32()}`); }
+    });
+    hook("Story.ApplyNewestEventScene", 0x278631C, {
+        onEnter(args) { console.log("[Story]   ApplyNewestEventScene called"); },
+        onLeave(retval) { console.log(`[Story]   ApplyNewestEventScene -> ${retval.toInt32()}`); }
+    });
+    // ApplyPortalOrMainScene sub-calls
+    hook("Story.ApplyPortalOrMainScene", 0x2786508, {
+        onEnter(args) { console.log(`[Story]   ApplyPortalOrMainScene omitSideStory=${args[1]}`); },
+        onLeave(retval) { console.log(`[Story]   ApplyPortalOrMainScene -> ${retval.toInt32()}`); }
+    });
+    hook("Story.ApplySideStory", 0x2786560, {
+        onEnter(args) { console.log("[Story]     ApplySideStory called"); },
+        onLeave(retval) { console.log(`[Story]     ApplySideStory -> ${retval.toInt32()}`); }
+    });
+    hook("Story.ApplyPortal", 0x27868E8, {
+        onEnter(args) { console.log("[Story]     ApplyPortal called"); },
+        onLeave(retval) { console.log(`[Story]     ApplyPortal -> ${retval.toInt32()}`); }
+    });
+    hook("Story.ApplyNewestMainScene", 0x27869C4, {
+        onEnter(args) { console.log("[Story]     ApplyNewestMainScene called"); },
+        onLeave(retval) { console.log(`[Story]     ApplyNewestMainScene -> ${retval.toInt32()}`); }
+    });
+    hook("Story.ApplyMainQuestRouteIdAndSeasonId", 0x27865FC, {
+        onEnter(args) { console.log("[Story]     ApplyMainQuestRouteIdAndSeasonId called"); },
+        onLeave(retval) { console.log(`[Story]     ApplyMainQuestRouteIdAndSeasonId -> ${retval.toInt32()}`); }
+    });
+    // ApplyNewestMainScene internals
+    hook("Story.InReplayedForMainStory", 0x2786B18, {
+        onEnter(args) { console.log("[Story]       InReplayedForMainStory called"); },
+        onLeave(retval) { console.log(`[Story]       InReplayedForMainStory -> ${retval.toInt32()}`); }
+    });
+    hook("Story.ApplyScene", 0x2786B90, {
+        onEnter(args) { console.log(`[Story]       ApplyScene sceneId=${args[1].toInt32()} storyType=${args[2].toInt32()}`); },
+        onLeave(retval) { console.log(`[Story]       ApplyScene -> ${retval.toInt32()}`); }
+    });
+    hook("Story.ActivateMainStoryWithSceneId", 0x2786C10, {
+        onEnter(args) { console.log(`[Story]       ActivateMainStoryWithSceneId sceneId=${args[1].toInt32()}`); }
+    });
+    hook("Story.ApplyReplay", 0x27826D0, {
+        onEnter(args) { console.log(`[Story]     ApplyReplay isReplayed=${args[1].toInt32()}`); }
+    });
+    hook("Story.SceneIdToQuestId", 0x27859E0, {
+        onEnter(args) { console.log(`[Story]   SceneIdToQuestId sceneId=${args[1].toInt32()}`); },
+        onLeave(retval) { console.log(`[Story]   SceneIdToQuestId -> questId=${retval.toInt32()}`); }
+    });
+    hook("Story.NeedsStampFirstChapter", 0x2785788, {
+        onEnter(args) { console.log(`[Story]   NeedsStampFirstChapter state=${args[1].toInt32()}`); },
+        onLeave(retval) { console.log(`[Story]   NeedsStampFirstChapter -> ${retval.toInt32()}`); }
+    });
+    // ActivePlayer accessors
+    hook("ActivePlayerToEntityMainQuestStatus", 0x2AB491C, {
+        onEnter(args) { console.log("[UserData] ActivePlayerToEntityMainQuestStatus called"); },
+        onLeave(retval) {
+            if (retval.isNull()) {
+                console.log("[UserData] ActivePlayerToEntityMainQuestStatus -> NULL");
+            } else {
+                try {
+                    const userId = retval.readS64();
+                    const routeId = retval.add(8).readS32();
+                    const curScene = retval.add(12).readS32();
+                    const headScene = retval.add(16).readS32();
+                    const isReached = retval.add(20).readU8();
+                    console.log(`[UserData] MainQuestStatus: routeId=${routeId} curScene=${curScene} headScene=${headScene} isReached=${isReached}`);
+                } catch(e) { console.log(`[UserData] MainQuestStatus at ${retval} (read err: ${e})`); }
+            }
+        }
+    });
+    hook("ActivePlayerToEntityReplayFlowStatus", 0x2AB4CA0, {
+        onEnter(args) { console.log("[UserData] ActivePlayerToEntityReplayFlowStatus called"); },
+        onLeave(retval) { console.log(`[UserData] ReplayFlowStatus -> ${retval}`); }
+    });
+
+    // ---- ASYNC EXCEPTION TRACING ----
+    // AsyncUniTaskMethodBuilder.SetException — RVA: 0x408C594
+    // Catches any exception thrown inside async UniTask methods (silent exceptions)
+    hook("AsyncUniTaskMethodBuilder.SetException", 0x408C594, {
+        onEnter(args) {
+            try {
+                const exc = args[1];
+                if (exc.isNull()) { console.log("[ASYNC-EXC] SetException called with null"); return; }
+                // Il2CppObject: klass at +0, klass->name at klass+0x10 (Il2CppClass.name)
+                const klass = exc.readPointer();
+                const namePtr = klass.add(0x10).readPointer();
+                const typeName = namePtr.readCString();
+                // Try to read _message field (System.Exception._message at offset 0x18 typically)
+                let msg = "";
+                try {
+                    const msgObj = exc.add(0x18).readPointer();
+                    if (!msgObj.isNull()) {
+                        // Il2CppString: length at +0x10, chars at +0x14
+                        const len = msgObj.add(0x10).readS32();
+                        msg = msgObj.add(0x14).readUtf16String(len);
+                    }
+                } catch(e2) {}
+                console.log(`[ASYNC-EXC] SetException: ${typeName}: ${msg}`);
+                console.log(`[ASYNC-EXC] Stack: ${Thread.backtrace(this.context, Backtracer.ACCURATE).map(DebugSymbol.fromAddress).join('\\n')}`);
+            } catch(e) { console.log("[ASYNC-EXC] SetException called (parse failed: " + e + ")"); }
+        }
+    });
+
+    // ---- GAMEPLAY FLOW TRACING ----
+    hook("Gameplay.CreateAsyncTitleEndContents", 0x274A97C, {
+        onEnter(args) { console.log("[Gameplay] >>> CreateAsyncTitleEndContents"); }
+    });
+    hook("Gameplay.OnRunApplicationAsync", 0x274E634, {
+        onEnter(args) {
+            globalThis._gameplayPtr = args[0];
+            console.log("[Gameplay] >>> OnRunApplicationAsync self=" + args[0]);
+        }
+    });
+    hook("Gameplay.WaitInitializedScene", 0x274E6E4, {
+        onEnter(args) { console.log("[Gameplay] >>> WaitInitializedScene"); }
+    });
+    hook("Gameplay.StartGameplayStateMachine", 0x274E478, {
+        onEnter(args) { console.log("[Gameplay] >>> StartGameplayStateMachine"); }
+    });
+    hook("Gameplay.GetFirstGameplayEvent", 0x274E780, {
+        onEnter(args) { console.log("[Gameplay] >>> GetFirstGameplayEvent"); }
+    });
+    hook("Gameplay.OnTitleAsync", 0x274E788, {
+        onEnter(args) { console.log("[Gameplay] >>> OnTitleAsync"); }
+    });
+    // BYPASS: PlayTitleFlowMovieAsync → return completed UniTask (no movie assets)
+    (function() {
+        const addr = libil2cpp.add(0x274E580);
+        Memory.patchCode(addr, 12, code => {
+            code.writeByteArray([
+                0x00, 0x00, 0x80, 0xd2, // mov x0, #0   (source = null → completed)
+                0x01, 0x00, 0x80, 0xd2, // mov x1, #0
+                0xc0, 0x03, 0x5f, 0xd6  // ret
+            ]);
+        });
+        console.log("[*] PatchCode Gameplay.PlayTitleFlowMovieAsync → completed UniTask");
+    })();
+
     // ---- FSM STATE POLLER ----
     // Periodic read of Title FSM fields to track progression without hooking MoveNext.
     // Layout: CurrentState@0x10, _firstTime@0x38, _inUpdate@0x39,
@@ -314,8 +487,56 @@ awaitLibil2cpp(() => {
                     lastLog = log;
                 }
             } catch(e) { console.log("[FSM-POLL] error: " + e); }
+
+            // Gameplay FSM poller (same timer)
+            try {
+                const gp = globalThis._gameplayPtr;
+                if (gp) {
+                    const GAMEPLAY_STATES = {0:"Unknown",1:"DevelopConfig",2:"FirstStep",3:"LockApp",4:"MainStory",5:"Title"};
+                    const gcs = ptr(gp).add(0x10).readS32();
+                    const gns = ptr(gp).add(0x14).readS32();
+                    const giu = ptr(gp).add(0x39).readU8();
+                    const gdue = ptr(gp).add(0x3A).readU8();
+                    const grue = ptr(gp).add(0x3C).readS32();
+                    const cwsrPtr = ptr(gp).add(0x158);
+                    const cwsr = cwsrPtr.readU8();
+                    // WaitCompletionScene unblock: when in MainStory flow, ALWAYS force cwsr=1 every poll.
+                    // Game resets it after reading; we must keep it set until flow progresses past WaitCompletionScene.
+                    const inMainStoryFlow = (gcs === 4 || (gcs === 5 && gns === 4));
+                    if (inMainStoryFlow) {
+                        if (cwsr === 0) {
+                            cwsrPtr.writeU8(1);
+                            if (!globalThis._lastCwsrForceLog || pollCount - globalThis._lastCwsrForceLog > 5) {
+                                console.log("[GP-POLL] Forced CompletedWaitSceneRequestReplace=1 (unblock WaitCompletionScene)");
+                                globalThis._lastCwsrForceLog = pollCount;
+                            }
+                        }
+                    }
+                    const cwsrNow = ptr(gp).add(0x158).readU8();
+                    const gpLog = `gcs=${gcs}(${GAMEPLAY_STATES[gcs]||"?"}) gns=${gns} giu=${giu} gdue=${gdue} grue=${grue} cwsr=${cwsrNow}`;
+                    if (!globalThis._lastGpLog || gpLog !== globalThis._lastGpLog || pollCount % 10 === 0) {
+                        console.log("[GP-POLL] " + gpLog + (gpLog === globalThis._lastGpLog ? " (unchanged #" + pollCount + ")" : ""));
+                        globalThis._lastGpLog = gpLog;
+                    }
+                }
+            } catch(e2) {}
         }, 2000);
         console.log("[*] FSM state poller installed (2s interval)");
+
+        // Fast cwsr forcer: 200ms — game resets cwsr quickly, we must keep it set
+        globalThis._cwsrForcer = setInterval(function() {
+            try {
+                const gp = globalThis._gameplayPtr;
+                if (!gp) return;
+                const gcs = ptr(gp).add(0x10).readS32();
+                const gns = ptr(gp).add(0x14).readS32();
+                const inMainStoryFlow = (gcs === 4 || (gcs === 5 && gns === 4));
+                if (inMainStoryFlow) {
+                    ptr(gp).add(0x158).writeU8(1);
+                }
+            } catch(e) {}
+        }, 200);
+        console.log("[*] WaitCompletionScene forcer installed (200ms)");
     })();
 
     // ---- NETWORK INITIALIZATION ----
@@ -740,21 +961,84 @@ awaitLibil2cpp(() => {
         }
     });
 
-    hook("Gameplay.OnRunApplicationAsync", 0x274E634, {
-        onEnter(args) { console.log("[Gameplay] OnRunApplicationAsync called! self=" + args[0]); }
-    });
+    // OnRunApplicationAsync.MoveNext — NO HOOK (MoveNext hooks corrupt jump tables)
+    console.log("[*] OnRunApplicationAsync.MoveNext: NO HOOK (completion safety)");
 
-    hook("Gameplay.OnTitleAsync", 0x274E788, {
-        onEnter(args) { console.log("[Gameplay] OnTitleAsync called! self=" + args[0]); }
-    });
+    // OnTitleAsync.MoveNext — NO HOOK (MoveNext hooks corrupt jump tables)
+    // Previously this hook was suspected of causing OnTitleAsync to stall.
+    console.log("[*] OnTitleAsync.MoveNext: NO HOOK (completion safety)");
 
+    // RequestUpdate: no patch (natural flow)
+    console.log("[*] RequestUpdate: no patch (natural flow)");
+
+    // OnMainStoryAsync: NO BYPASS — let it run naturally.
+    console.log("[*] OnMainStoryAsync: natural flow (no patch)");
     hook("Gameplay.OnMainStoryAsync", 0x274E4D4, {
-        onEnter(args) { console.log("[Gameplay] OnMainStoryAsync called! self=" + args[0]); }
+        onEnter(args) { console.log("[TRACE] OnMainStoryAsync ENTER"); },
+        onLeave(retval) { console.log("[TRACE] OnMainStoryAsync LEAVE"); }
+    });
+
+    // ---- OnMainStoryAsync FLOW TRACING ----
+    // WaitCompletionScene — RVA: 0x2748B0C (polls cwsr at Gameplay+0x158)
+    hook("Gameplay.WaitCompletionScene", 0x2748B0C, {
+        onEnter(args) { console.log("[TRACE] WaitCompletionScene ENTER"); },
+        onLeave(retval) { console.log("[TRACE] WaitCompletionScene LEAVE"); }
+    });
+    hook("Gameplay.EndEventMap", 0x273CF38, {
+        onEnter(args) { console.log("[Gameplay] EndEventMap called! nextScene=" + args[1]); },
+        onLeave(retval) { console.log("[Gameplay] EndEventMap returned"); }
+    });
+    hook("Gameplay.IsNeedsFinishedReturnToTitle", 0x273D208, {
+        onLeave(retval) { console.log("[Gameplay] IsNeedsFinishedReturnToTitle -> " + retval); }
+    });
+    hook("Gameplay.IsNeedsFinishedTransitionSideStory", 0x273D320, {
+        onLeave(retval) { console.log("[Gameplay] IsNeedsFinishedTransitionSideStory -> " + retval); }
+    });
+    hook("Gameplay.IsNeedsFinishedTransitionPortal", 0x273D3F4, {
+        onLeave(retval) { console.log("[Gameplay] IsNeedsFinishedTransitionPortal -> " + retval); }
+    });
+    hook("Gameplay.RunFinishedReturnTitleAsync", 0x273D6C0, {
+        onEnter(args) { console.log("[Gameplay] RunFinishedReturnTitleAsync called!"); }
+    });
+    // BYPASS: DownloadChapterAsync → return completed UniTask<bool>(true)
+    // We don't serve chapter assets; IsNeedsChapterAssetDownload forced false wasn't enough — method has other awaits.
+    (function() {
+        const addr = libil2cpp.add(0x273C3FC);
+        Memory.patchCode(addr, 12, code => {
+            code.writeByteArray([
+                0x20, 0x00, 0x80, 0xd2, // mov x0, #1   (result = true)
+                0x01, 0x00, 0x80, 0xd2, // mov x1, #0   (source = null → completed)
+                0xc0, 0x03, 0x5f, 0xd6  // ret
+            ]);
+        });
+        console.log("[*] PatchCode Gameplay.DownloadChapterAsync → completed UniTask<bool>(true)");
+    })();
+    hook("Gameplay.IsNeedsChapterAssetDownload", 0x273C598, {
+        onLeave(retval) {
+            console.log("[Gameplay] IsNeedsChapterAssetDownload -> " + retval + " (FORCING false)");
+            retval.replace(ptr(0));
+        }
+    });
+    hook("Gameplay.NeedsNextPlayingQuest", 0x273D164, {
+        onLeave(retval) { console.log("[Gameplay] NeedsNextPlayingQuest -> " + retval); }
+    });
+    hook("Gameplay.BeginEventMap", 0x273C86C, {
+        onEnter(args) { console.log("[Gameplay] BeginEventMap called!"); }
     });
 
     hook("Gameplay.RunTitle", 0x274B29C, {
-        onEnter(args) { console.log("[Gameplay] RunTitle called! self=" + args[0]); }
+        onEnter(args) {
+            globalThis._gameplayPtr = args[0];
+            console.log("[Gameplay] RunTitle called! self=" + args[0]);
+        }
     });
+
+    // RunTitle.MoveNext — NO HOOK (MoveNext hooks corrupt jump tables)
+    console.log("[*] RunTitle.MoveNext: NO HOOK (completion safety)");
+
+    // OnTitleAsync.MoveNext — NO HOOK (MoveNext hooks corrupt jump tables)
+    // KEY INSIGHT: This hook was likely the CAUSE of OnTitleAsync stalling.
+    console.log("[*] OnTitleAsync.MoveNext: NO HOOK (completion safety)");
 
     // Story.Generate — RVA: 0x2788E28
     // NO HOOK — Generate calls FSM.Setup internally.
@@ -1303,4 +1587,108 @@ awaitLibil2cpp(() => {
             console.log("[!] Error stack:", e.stack);
         }
     }, 1000);
+
+    // ---- DISASSEMBLE ApplyNewestScene (0x27858E8) ----
+    // Non-async method: Story.FirstQuestStates ApplyNewestScene(bool omitSideStory)
+    // Goal: find BL targets to understand what conditions cause Failure(2)
+    setTimeout(() => {
+        const base = libil2cpp;
+        const rva = 0x27858E8;
+        const addr = base.add(rva);
+        const maxInsns = 512;
+        console.log(`\n[DISASM] ApplyNewestScene at ${addr} (RVA=0x${rva.toString(16)})`);
+        const blTargets = [];
+        for (let i = 0; i < maxInsns; i++) {
+            const pc = addr.add(i * 4);
+            const word = pc.readU32();
+            // RET (0xD65F03C0)
+            if (word === 0xD65F03C0) {
+                console.log(`[DISASM]   +${(i*4).toString(16)}: RET`);
+                break;
+            }
+            // BL imm26 (opcode 100101)
+            if ((word >>> 26) === 0x25) {
+                const imm26 = word & 0x03FFFFFF;
+                const offset = (imm26 < 0x02000000 ? imm26 : imm26 - 0x04000000) * 4;
+                const target = pc.add(offset);
+                const targetRVA = target.sub(base).toInt32();
+                blTargets.push({offset: i*4, targetRVA: targetRVA});
+                console.log(`[DISASM]   +${(i*4).toString(16)}: BL 0x${targetRVA.toString(16)}`);
+            }
+        }
+        console.log(`[DISASM] ApplyNewestScene: ${blTargets.length} BL calls found`);
+        blTargets.forEach(t => {
+            console.log(`[DISASM]   BL target RVA=0x${t.targetRVA.toString(16)} (offset +0x${t.offset.toString(16)})`);
+        });
+
+        // Also disassemble ApplyFirstScene (0x2785888) — shorter, called first
+        const rva2 = 0x2785888;
+        const addr2 = base.add(rva2);
+        console.log(`\n[DISASM] ApplyFirstScene at ${addr2} (RVA=0x${rva2.toString(16)})`);
+        const blTargets2 = [];
+        for (let i = 0; i < maxInsns; i++) {
+            const pc = addr2.add(i * 4);
+            const word = pc.readU32();
+            if (word === 0xD65F03C0) {
+                console.log(`[DISASM]   +${(i*4).toString(16)}: RET`);
+                break;
+            }
+            if ((word >>> 26) === 0x25) {
+                const imm26 = word & 0x03FFFFFF;
+                const offset = (imm26 < 0x02000000 ? imm26 : imm26 - 0x04000000) * 4;
+                const target = pc.add(offset);
+                const targetRVA = target.sub(base).toInt32();
+                blTargets2.push({offset: i*4, targetRVA: targetRVA});
+                console.log(`[DISASM]   +${(i*4).toString(16)}: BL 0x${targetRVA.toString(16)}`);
+            }
+        }
+        console.log(`[DISASM] ApplyFirstScene: ${blTargets2.length} BL calls found`);
+
+        // Disassemble ApplyPortalOrMainScene (0x2786508) — called by ApplyNewestScene
+        const rva3 = 0x2786508;
+        const addr3 = base.add(rva3);
+        console.log(`\n[DISASM] ApplyPortalOrMainScene at ${addr3} (RVA=0x${rva3.toString(16)})`);
+        const blTargets3 = [];
+        for (let i = 0; i < maxInsns; i++) {
+            const pc = addr3.add(i * 4);
+            const word = pc.readU32();
+            if (word === 0xD65F03C0) {
+                console.log(`[DISASM]   +${(i*4).toString(16)}: RET`);
+                break;
+            }
+            if ((word >>> 26) === 0x25) {
+                const imm26 = word & 0x03FFFFFF;
+                const offset = (imm26 < 0x02000000 ? imm26 : imm26 - 0x04000000) * 4;
+                const target = pc.add(offset);
+                const targetRVA = target.sub(base).toInt32();
+                blTargets3.push({offset: i*4, targetRVA: targetRVA});
+                console.log(`[DISASM]   +${(i*4).toString(16)}: BL 0x${targetRVA.toString(16)}`);
+            }
+        }
+        console.log(`[DISASM] ApplyPortalOrMainScene: ${blTargets3.length} BL calls found`);
+
+        // Also: ApplyNewestMainScene (0x27869C4)
+        const rva4 = 0x27869C4;
+        const addr4 = base.add(rva4);
+        console.log(`\n[DISASM] ApplyNewestMainScene at ${addr4} (RVA=0x${rva4.toString(16)})`);
+        const blTargets4 = [];
+        for (let i = 0; i < maxInsns; i++) {
+            const pc = addr4.add(i * 4);
+            const word = pc.readU32();
+            if (word === 0xD65F03C0) {
+                console.log(`[DISASM]   +${(i*4).toString(16)}: RET`);
+                break;
+            }
+            if ((word >>> 26) === 0x25) {
+                const imm26 = word & 0x03FFFFFF;
+                const offset = (imm26 < 0x02000000 ? imm26 : imm26 - 0x04000000) * 4;
+                const target = pc.add(offset);
+                const targetRVA = target.sub(base).toInt32();
+                blTargets4.push({offset: i*4, targetRVA: targetRVA});
+                console.log(`[DISASM]   +${(i*4).toString(16)}: BL 0x${targetRVA.toString(16)}`);
+            }
+        }
+        console.log(`[DISASM] ApplyNewestMainScene: ${blTargets4.length} BL calls found`);
+        console.log("[DISASM] Done. Look up BL targets in dump.cs to understand the logic.");
+    }, 3000);
 });

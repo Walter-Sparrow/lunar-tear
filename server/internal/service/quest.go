@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"time"
 
 	pb "lunar-tear/server/gen/proto"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -18,8 +20,16 @@ func NewQuestServiceServer() *QuestServiceServer {
 
 func (s *QuestServiceServer) UpdateMainFlowSceneProgress(ctx context.Context, req *pb.UpdateMainFlowSceneProgressRequest) (*pb.UpdateMainFlowSceneProgressResponse, error) {
 	log.Printf("[QuestService] UpdateMainFlowSceneProgress: questSceneId=%d", req.QuestSceneId)
+
+	flowJSON := fmt.Sprintf(`[{"UserId":1001,"CurrentMainQuestRouteId":1,"CurrentQuestSceneId":%d,"HeadQuestSceneId":%d,"IsReachedLastQuestScene":false,"LatestVersion":0}]`,
+		req.QuestSceneId, req.QuestSceneId)
+
+	diff := map[string]*pb.DiffData{
+		"user_main_quest_main_flow_status": {UpdateRecordsJson: flowJSON},
+	}
+
 	return &pb.UpdateMainFlowSceneProgressResponse{
-		DiffUserData: map[string]*pb.DiffData{},
+		DiffUserData: diff,
 	}, nil
 }
 
@@ -40,17 +50,40 @@ func (s *QuestServiceServer) UpdateMainQuestSceneProgress(ctx context.Context, r
 func (s *QuestServiceServer) StartMainQuest(ctx context.Context, req *pb.StartMainQuestRequest) (*pb.StartMainQuestResponse, error) {
 	log.Printf("[QuestService] StartMainQuest: questId=%d isMainFlow=%v deckNum=%d battleOnly=%v replayFlow=%v",
 		req.QuestId, req.IsMainFlow, req.UserDeckNumber, req.IsBattleOnly, req.IsReplayFlow)
+
+	now := time.Now().Unix()
+	questJSON := fmt.Sprintf(`[{"UserId":1001,"QuestId":%d,"QuestStateType":1,"IsBattleOnly":false,"LatestStartDatetime":%d,"ClearCount":0,"DailyClearCount":0,"LastClearDatetime":0,"ShortestClearFrames":0,"LatestVersion":0}]`,
+		req.QuestId, now)
+
+	diff := map[string]*pb.DiffData{
+		"user_quest": {UpdateRecordsJson: questJSON},
+	}
+
 	return &pb.StartMainQuestResponse{
 		BattleDropReward: []*pb.BattleDropReward{},
-		DiffUserData:     map[string]*pb.DiffData{},
+		DiffUserData:     diff,
 	}, nil
 }
 
 func (s *QuestServiceServer) FinishMainQuest(ctx context.Context, req *pb.FinishMainQuestRequest) (*pb.FinishMainQuestResponse, error) {
 	log.Printf("[QuestService] FinishMainQuest: questId=%d isMainFlow=%v isRetired=%v storySkipType=%d",
 		req.QuestId, req.IsMainFlow, req.IsRetired, req.StorySkipType)
+
+	now := time.Now().Unix()
+	questJSON := fmt.Sprintf(`[{"UserId":1001,"QuestId":%d,"QuestStateType":3,"IsBattleOnly":false,"LatestStartDatetime":%d,"ClearCount":1,"DailyClearCount":1,"LastClearDatetime":%d,"ShortestClearFrames":600,"LatestVersion":0}]`,
+		req.QuestId, now, now)
+
+	flowJSON := `[{"UserId":1001,"CurrentMainQuestRouteId":1,"CurrentQuestSceneId":3,"HeadQuestSceneId":3,"IsReachedLastQuestScene":false,"LatestVersion":0}]`
+
+	diff := map[string]*pb.DiffData{
+		"user_quest":                       {UpdateRecordsJson: questJSON},
+		"user_main_quest_main_flow_status": {UpdateRecordsJson: flowJSON},
+	}
+
+	log.Printf("[QuestService] FinishMainQuest diff: user_quest=%s flow_status=%s", questJSON, flowJSON)
+
 	return &pb.FinishMainQuestResponse{
-		DiffUserData: map[string]*pb.DiffData{},
+		DiffUserData: diff,
 	}, nil
 }
 

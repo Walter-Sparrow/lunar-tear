@@ -67,6 +67,10 @@ func defaultTableNames() []string {
 	return []string{
 		"user",
 		"user_quest",
+		"user_main_quest_flow_status",
+		"user_main_quest_main_flow_status",
+		"user_main_quest_progress_status",
+		"user_main_quest_season_route",
 		"user_weapon",
 		"user_costume",
 		"user_companion",

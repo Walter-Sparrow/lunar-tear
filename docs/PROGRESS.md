@@ -48,31 +48,228 @@ Android Device/Emulator (patched APK)
 | **SyncUserData hybrid bypass (real load + forced completion)** | **OK** |
 | **Full Story FSM quest flow (UpdateSceneProgress → StartQuest → FinishQuest → FinishAutoOrbit)** | **OK** |
 | **Battle bypass (CalculatorQuest.StartQuest replaced → skip to FinishMainQuest)** | **OK** |
-| **Asset download / loading screen reached (33%→60%+)** | **REACHED** |
+| **WaitCompletionScene unblock (force flag at Gameplay+0x158)** | **OK** |
+| **IsNeedsChapterAssetDownload forced false** | **OK** |
+| **OnMainStoryAsync full bypass (Memory.patchCode → completed UniTask)** | **OK** (but OnTitleAsync stuck) |
+| **PlayTitleFlowMovieAsync bypass (Memory.patchCode → completed UniTask)** | **OK** |
+| **OnTitleAsync.MoveNext disassembly (309 insns, all BL targets mapped)** | **DONE** |
+| **AsyncUniTaskMethodBuilder.SetException tracing (zero exceptions)** | **DONE** |
+| **DiffUserData plain JSON format (quest.go fix)** | **OK** |
+| **ARM64 BL disassembly of ApplyNewestScene call tree (4 methods)** | **DONE** |
+| **Runtime tracing hooks for all Story sub-methods** | **DONE** |
+| **Live tracing revealed NULL ActivePlayerToEntityMainQuestStatus** | **CRITICAL FINDING** |
+| **Complete call chain mapped via runtime logs** | **DONE** |
 
-## Current State: Asset Download / Outgame Loading
+## Current State: ApplyNewestScene Returns Failure(2) — But Main Quest Path IS Reached
 
-### What's Happening
-After the full quest flow completes successfully, the game enters an asset download/loading phase.
-The loading bar shows progress (33.3% → 60%+), suggesting the game is downloading or loading
-asset bundles for the outgame (home screen / Mama area).
+### The Problem
+**UPDATED after tracing run**: `ApplyNewestScene` DOES call `ApplyPortalOrMainScene` internally (after all "extra" checks fail). However, `ActivePlayerToEntityMainQuestStatus()` returns **NULL** because `user_main_quest_main_flow_status` table is empty.
 
-### Boot Flow (Confirmed Working)
+**Call Chain (Confirmed via Live Tracing):**
 ```
-Title FSM → all 11 states complete
-Gameplay FSM → OnMainStoryAsync
-Story FSM → UpdateMainFlowSceneProgress(sceneId=2)
-           → StartMainQuest(questId=1, isMainFlow=true) × 2
-           → FinishMainQuest(questId=1, storySkipType=1)
-           → FinishAutoOrbit
-           → NotificationService/GetHeaderNotification
-           → Asset download / loading screen
+ApplyNewestScene
+  → IfNeedsApplyAutoPlaying → false
+  → ApplyNewestExtraScene → false
+  → ApplyNewestBigHuntScene → false
+  → ApplyNewestContentStoryScene → false
+  → ApplyNewestEventScene → false
+  → ApplyPortalOrMainScene (YES, it IS called!)
+    → ApplySideStory → false
+    → ApplyPortal → false
+    → ApplyNewestMainScene
+      → ActivePlayerToEntityMainQuestStatus → NULL ← ROOT CAUSE
+      → return false
+    → return Failure(2)
 ```
 
-### Next Steps
-1. Wait for loading to complete and see what happens next
-2. If new gRPC calls fail, add missing service stubs
-3. If asset downloads fail (Octo CDN), may need to provide asset bundles or skip
+Despite Failure(2), the game continues:
+- `NeedsStampFirstChapter state=2 → 1` (returns true!)
+- `ActivateMainStoryWithSceneId(sceneId=2)` fires
+- All gRPC calls succeed (UpdateSceneProgress → StartQuest ×2 → FinishQuest → FinishAutoOrbit)
+- But FSM stays: `gcs=5(Title) gns=4` (stuck in transition)
+
+**Root Cause**: Empty `user_main_quest_main_flow_status` table → NULL ActivePlayer status → ApplyNewestMainScene fails → but game tries to continue anyway via alternate path → FSM transition hangs post-quest.
+
+### Call Chain (Confirmed via Disassembly)
+```
+OnRunApplicationAsync (d__524):
+  state 0-2: WaitInitializedScene, setup
+  state 3: await OnTitleAsync → STUCK HERE (OnTitleAsync never completes)
+  state 4: (never reached) → would call CreateAsyncTitleEndContents
+
+OnTitleAsync (d__528) — disassembled, only direct BL calls:
+  InitializeAudioAsync (0x2737488)
+  PlaySplashAsync (0x274A5FC)
+  InitializeUserStateAsync (0x274C5C8)
+  CreateTouch (0x274BB80)
+  RunTitle (0x274B29C)        ← runs Title FSM
+  FSM.RequestUpdate (0x423D24C) ← enqueues MainStory event for Gameplay FSM
+  SetResult (0x408C7D4)       ← SHOULD complete OnTitleAsync (in success path)
+  
+  NOTE: OnTitleAsync does NOT directly call OnMainStoryAsync or CreateAsyncTitleEndContents!
+  OnMainStoryAsync is triggered by the FSM machinery via transition handlers.
+  CreateAsyncTitleEndContents is called from OnRunApplicationAsync.
+```
+
+### What's Been Tried (THIS SESSION)
+
+#### 1. DiffUserData format fix (DONE)
+QuestService was returning MessagePack-encoded base64 in DiffUserData. Client expects plain JSON.
+Fixed `quest.go` to use `fmt.Sprintf` with JSON format. **Confirmed working** (server logs show correct JSON).
+
+#### 2. AsyncUniTaskMethodBuilder.SetException tracing (DONE)
+Hooked RVA 0x408C594 to catch silent async exceptions. **Result: ZERO exceptions.** The hangs are NOT caused by unhandled exceptions.
+
+#### 3. WaitCompletionScene unblock (DONE, partial success)
+After quest RPCs complete, `OnMainStoryAsync` enters `WaitCompletionScene` which polls `CompletedWaitSceneRequestReplace` (Gameplay+0x158). Our battle bypass skips the scene conductor, so the flag is never set.
+**Fix**: Force flag=true on OnMainStoryAsync.MoveNext count=2 (after quest RPCs return).
+**Result**: Unblocked WaitCompletionScene, but revealed the next hang (DownloadChapterAsync).
+
+#### 4. IsNeedsChapterAssetDownload bypass (DONE, partial success)
+After WaitCompletionScene, OnMainStoryAsync calls `DownloadChapterAsync` because `IsNeedsChapterAssetDownload` (0x273C598) returns true. We don't serve chapter assets.
+**Fix**: Force retval → false in onLeave hook.
+**Result**: DownloadChapterAsync skips download, but OnMainStoryAsync hits YET ANOTHER hang (unknown await after download check). The story flow has too many sequential hangs to fix individually.
+
+#### 5. OnMainStoryAsync full bypass via Memory.patchCode (DONE, OnTitleAsync stuck)
+Patched OnMainStoryAsync (0x274E4D4) to return completed UniTask: `mov x0, #0; mov x1, #0; ret`.
+Also patched PlayTitleFlowMovieAsync (0x274E580) same way.
+**Result**: OnMainStoryAsync returns instantly but OnTitleAsync STILL stuck. Disassembly revealed OnTitleAsync doesn't call OnMainStoryAsync directly — the FSM does. The synchronous completion may break the FSM's event processing loop.
+
+#### 6. OnMainStoryAsync bypass via Interceptor.replace (FAILED — Abort)
+Tried replacing Memory.patchCode with `Interceptor.replace(addr, new NativeCallback(...))`.
+**Result**: Game aborted on launch. Likely MethodInfo* corruption (known IL2CPP/Frida issue with virtual method dispatch).
+
+#### 7. OnTitleAsync.MoveNext disassembly (DONE, key insight)
+Scanned 309 instructions (0x4D4 bytes) from RVA 0x2886950.
+Found all BL targets. **Key discovery**: OnTitleAsync only calls RunTitle, FSM.RequestUpdate, and SetResult — it does NOT call OnMainStoryAsync or CreateAsyncTitleEndContents.
+**Bug found**: Initial ARM64 BL detection failed because JS bitwise ops use signed 32-bit. Fixed: use `(word >>> 26) === 0x25` for BL, `(word >>> 10) === 0x358FC0` for BLR.
+
+### What Has Been Tried (LATEST SESSION)
+8. **NOP RequestUpdate(StartMainStory) in OnTitleAsync** — Gameplay stayed in Title (gcs=5), OnTitleAsync completed, but CreateAsyncTitleEndContents NEVER called. Conclusion: CreateAsyncTitleEndContents is NOT the next step after OnTitleAsync; it's inside/after OnMainStoryAsync.
+9. **Tail-call OnMainStoryAsync → CreateAsyncTitleEndContents** — CRASHED: MethodAccessException (IAwaiter.get_IsCompleted on Gameplay failed) + SIGSEGV. CreateAsyncTitleEndContents needs full OnMainStoryAsync context (Story FSM, quest flow, etc.). Cannot jump to it directly.
+10. **OnMainStoryAsync natural flow (no bypass)** — WaitCompletionScene unblock via poller. **Bug**: poller only forced cwsr when gcs=4, but during OnMainStoryAsync we see gcs=5 (transition not committed). **Fix**: also force when gcs=5 && gns=4 (transitioning to MainStory). DownloadChapterAsync patched → return completed UniTask<bool>(true). **Next test**: verify flow reaches CreateAsyncTitleEndContents.
+
+11. **Tracing run (2026-02-26)** — Added OnMainStoryAsync ENTER/LEAVE, WaitCompletionScene ENTER/LEAVE. **Result**: ApplyFirstScene + ApplyNewestScene both return **Failure(2)**. **WaitCompletionScene is NEVER called** — when Failure, the code takes a different path that never reaches WaitCompletionScene. NeedsNextPlayingQuest, RestartQuestAsync, BeginEventMap, EndEventMap, IsNeedsFinishedReturnToTitle, RunFinishedReturnTitleAsync — none fire. **Conclusion**: Blocker is upstream — OnMainStoryAsync blocks on a different await when Failure. Need to either (a) fix user data so ApplyNewestScene returns Playing, or (b) find and patch the Failure-path await.
+
+12. **ApplyFirstScene/ApplyNewestScene patch: Failure→NotPlaying** — When return value is 2 (Failure), force 0 (NotPlaying). **Result: CRASH** — NullReferenceException + SIGSEGV. NotPlaying path also expects objects we don't have. Reverted.
+
+13. **Disassembly of ApplyNewestScene call tree (2026-02-26)** — Frida ARM64 disassembler dumped BL targets for 4 methods. **Key discovery**: `ApplyNewestScene` does NOT call `ApplyPortalOrMainScene` or `ApplyNewestMainScene`. It only checks:
+    - `IfNeedsApplyAutoPlaying()` → probably false (no auto-orbit state)
+    - `ApplyNewestExtraScene()` → false (no extra quests)
+    - `ApplyNewestBigHuntScene()` → false (no big hunt)
+    - `ApplyNewestContentStoryScene()` → false (no content stories)
+    - `ApplyNewestEventScene()` → false (no events)
+    - If ALL return false → **returns Failure(2)** because no scene was applied.
+    - `ApplyPortalOrMainScene` (which calls `ApplyNewestMainScene`) is NOT in the call chain.
+    
+    **Call tree mapped**:
+    ```
+    ApplyFirstScene (0x2785888):
+      → ApplyNewestScene (0x27858E8)
+      → SceneIdToQuestId (0x27859E0)
+      → ApplyReplay (0x27826D0)
+    
+    ApplyNewestScene (0x27858E8): ← returns Failure(2)
+      → ActivePlayerToEntityMainQuestStatus (0x2AB491C)
+      → IfNeedsApplyAutoPlaying (0x2785A50)
+      → ApplyNewestExtraScene (0x2785F48)
+      → ApplyNewestBigHuntScene (0x2786058)
+      → ApplyNewestContentStoryScene (0x2786230)
+      → ApplyNewestEventScene (0x278631C)
+      *** DOES NOT CALL ApplyPortalOrMainScene ***
+    
+    ApplyPortalOrMainScene (0x2786508): ← NEVER REACHED
+      → ApplySideStory (0x2786560)
+      → ApplyPortal (0x27868E8)
+      → ApplyNewestMainScene (0x27869C4)
+      → ApplyMainQuestRouteIdAndSeasonId (0x27865FC)
+    
+    ApplyNewestMainScene (0x27869C4): ← NEVER REACHED
+      → InReplayedForMainStory (0x2786B18)
+      → ApplyScene(sceneId, storyType) (0x2786B90)
+      → ActivateMainStoryWithSceneId (0x2786C10)
+      → ApplyReplay (0x27826D0)
+    ```
+    **Hypothesis**: `ApplyNewestScene` only handles "resume from interrupted quest" scenarios (extra/event/bighunt/contentstory). For fresh users with no in-progress quests, ALL sub-checks return false → Failure(2). The main quest path (`ApplyPortalOrMainScene`) is called from ELSEWHERE — probably from `OnMainStoryAsync.MoveNext` itself at a different state, not from `ApplyNewestScene`.
+    
+    Added comprehensive runtime tracing hooks for all sub-methods + `ActivePlayerToEntityMainQuestStatus` return value inspection. **Next**: run game with tracing to confirm which sub-methods fire and what values they return.
+
+### What Has NOT Been Tried Yet
+1. ~~Keeping OnMainStoryAsync alive (not patched) + fixing all hangs one by one~~ — ONGOING. Natural flow runs.
+2. ~~Providing proper user_main_quest_* tables in initial GetUserData~~ — DONE. Data received.
+3. ~~Force ApplyFirstScene/ApplyNewestScene return value~~ — FAILED (1→crash, 0→crash). Reverted.
+4. ~~Understanding WHERE ApplyPortalOrMainScene is called~~ — **FOUND!** It IS called from inside ApplyNewestScene (call chain confirmed via tracing). See log analysis below.
+5. **Fixing NULL ActivePlayerToEntityMainQuestStatus** — CRITICAL FINDING from tracing run. The method returns NULL (no user data), causing ApplyNewestMainScene to return false, causing Failure(2).
+6. **Making Failure(2) path work** — Despite Failure(2), `NeedsStampFirstChapter` returns true (1), `ActivateMainStoryWithSceneId(sceneId=2)` fires, and all gRPC calls complete! But FSM stays in Title state. Need to investigate why transition to MainStory doesn't complete.
+
+### CRITICAL FINDING: Tracing Run Results (2026-02-26 Session)
+
+**Log Analysis from Live Tracing:**
+```
+[Story] ApplyNewestScene omitSideStory=0x0
+[UserData] ActivePlayerToEntityMainQuestStatus -> NULL  ← CRITICAL!
+[Story]   IfNeedsApplyAutoPlaying -> 0
+[Story]   ApplyNewestExtraScene -> 0
+[Story]   ApplyNewestBigHuntScene -> 0
+[Story]   ApplyNewestContentStoryScene -> 0
+[Story]   ApplyNewestEventScene -> 0
+[Story]   ApplyPortalOrMainScene omitSideStory=0x0        ← CALLED INSIDE ApplyNewestScene!
+[Story]     ApplySideStory -> 0
+[Story]     ApplyPortal -> 0
+[Story]     ApplyNewestMainScene called
+[UserData] ActivePlayerToEntityMainQuestStatus -> NULL  ← AGAIN NULL!
+[Story]     ApplyNewestMainScene -> 0
+[Story]   ApplyPortalOrMainScene -> 2
+[Story] ApplyNewestScene -> 0x2 (Failure)
+[Story] ApplyFirstScene -> 0x2 (Failure)
+[Story]   NeedsStampFirstChapter state=2 -> 1            ← TRUE despite Failure!
+[Story]       ActivateMainStoryWithSceneId sceneId=2     ← FIRES!
+[gRPC] QuestService/UpdateMainFlowSceneProgressAsync    ← OK
+[gRPC] QuestService/StartMainQuestAsync ×2                ← OK
+[gRPC] QuestService/FinishMainQuestAsync                ← OK
+[gRPC] QuestService/FinishAutoOrbitAsync                ← OK
+[gRPC] NotificationService/GetHeaderNotificationAsync   ← OK
+[GP-POLL] gcs=5(Title) gns=4 giu=1 gdue=0 grue=5 cwsr=1 ← STUCK!
+```
+
+**Key Discoveries:**
+
+1. **`ActivePlayerToEntityMainQuestStatus -> NULL`** — This is the ROOT CAUSE. The method reads `DatabaseDefine.User.EntityIUserMainQuestMainFlowStatusTable.FindByUserId(userId)` and returns NULL because the table is empty for this user.
+
+2. **`ApplyPortalOrMainScene IS called from ApplyNewestScene`** — contrary to initial disassembly analysis. The call happens after all Extra/BigHunt/ContentStory/Event checks return false. So the flow is:
+   ```
+   ApplyNewestScene
+     → Check all "extra" scene types → all false
+     → ApplyPortalOrMainScene (if omitSideStory=false)
+       → ApplySideStory → false
+       → ApplyPortal → false
+       → ApplyNewestMainScene
+         → ActivePlayerToEntityMainQuestStatus → NULL
+         → return false (no scene applied)
+       → return Failure(2)
+   ```
+
+3. **`NeedsStampFirstChapter` returns true (1)** — despite Failure(2), this check passes! It must be checking different data (probably master data, not user data).
+
+4. **`ActivateMainStoryWithSceneId(sceneId=2)` fires** — the game decides to activate scene 2 anyway, even though ApplyNewestScene returned Failure. This triggers the full quest flow (gRPC calls all succeed).
+
+5. **FSM stuck**: `gcs=5(Title) gns=4` — Gameplay FSM is in Title (5), NextState=MainStory (4), but the transition never completes. `giu=1` (_inUpdate=true) suggests DoUpdate is still processing.
+
+**Root Cause Theory:**
+The Failure(2) from ApplyNewestScene is NORMAL for fresh users (no in-progress quests). The game should continue to home screen via the `NeedsStampFirstChapter` → `ActivateMainStoryWithSceneId` path. The hang is NOT caused by Failure(2), but by something else in the FSM transition after quest completion.
+
+**Next Steps:**
+1. Add `user_main_quest_main_flow_status` table with proper data (non-NULL routeId/sceneId)
+2. Verify ActivePlayerToEntityMainQuestStatus returns valid struct
+3. Check if ApplyNewestMainScene then returns true
+4. If FSM still stuck, investigate post-quest FSM state (DoUpdate flags)
+
+### Root Cause Analysis
+The Gameplay FSM uses `FiniteStateMachineTask.DoUpdate.MoveNext` to process transitions. When OnTitleAsync calls `FSM.RequestUpdate`, the next event (MainStory) is enqueued. The FSM processes it asynchronously (via DoUpdate on the next frame tick). When OnMainStoryAsync is called by DoUpdate:
+- **Normal flow**: OnMainStoryAsync runs asynchronously (takes many frames for quest + scenes). FSM DoUpdate awaits it. When complete, DoUpdate resumes, processes the result, and OnTitleAsync's continuation fires.
+- **Patched flow**: OnMainStoryAsync returns instantly (completed UniTask). This may cause DoUpdate.MoveNext to complete synchronously in the same frame, which might confuse the FSM's internal bookkeeping (`_inUpdate`, `_doUpdateEvent` flags). Or the continuation routing breaks because the FSM expects async behavior.
+
+We CANNOT hook DoUpdate.MoveNext (corrupts jump tables). This makes debugging the FSM's internal processing very difficult.
 
 ## Previous Blocker (RESOLVED): QuestService + Battle Scene Loading
 
@@ -87,7 +284,7 @@ but the game tried to load battle scene assets (which we don't have), showing a 
 3. Replaced `CalculatorQuest.StartQuest` (RVA 0x27276A4) with NativeCallback returning completed UniTask — skips battle scene loading entirely
 4. Patched `ShowDialogQuestRetry` (RVA 0x304953C) to return false (retire) as safety fallback
 5. Added `NotificationService` with `GetHeaderNotification` stub
-6. Result: game auto-completes quest 1 and advances to loading screen
+6. Result: game auto-completes quest 1 and advances past quest flow
 
 ## Previous Blocker (RESOLVED): SyncUserData Completion Chain
 
@@ -181,7 +378,17 @@ Gameplay FSM detects completion:
     gRPC >>> QuestService/FinishMainQuestAsync(questId=1, storySkipType=1)  → OK
     gRPC >>> QuestService/FinishAutoOrbitAsync                               → OK
     gRPC >>> NotificationService/GetHeaderNotificationAsync                  → OK
-    → Asset download / loading screen (33% → 60%+)
+    → WaitCompletionScene polling (CompletedWaitSceneRequestReplace at +0x158) → FORCED true
+    → IsNeedsChapterAssetDownload → FORCED false
+    → [unknown await #3 — OnMainStoryAsync has many sequential hangs]
+
+  (WITH OnMainStoryAsync bypass: all of the above skipped, returns instantly)
+  
+  OnTitleAsync → calls FSM.RequestUpdate(MainStory) → triggers OnMainStoryAsync via FSM
+              → OnMainStoryAsync completes (patched) → ??? → OnTitleAsync STUCK (count=5 never fires)
+  
+  OnRunApplicationAsync → state=3 awaiting OnTitleAsync → STUCK (state=4 never reached)
+              → CreateAsyncTitleEndContents NEVER CALLED → no home screen
 ```
 
 ## Key Findings
@@ -213,6 +420,33 @@ Gameplay FSM detects completion:
 - **Module.findExportByName (static)** — throws "TypeError: not a function" in Frida 17.x. Use instance method: `Process.getModuleByName("libil2cpp.so").findExportByName("...")`.
 - **UniTask struct return override** — UniTask<bool> returns in (x0=result, x1=source). Use `Interceptor.attach` onLeave with `retval.replace(ptr(1))` + `this.context.x1 = ptr(0)` for forced completion.
 - **BL to Interceptor'd targets** — crash if MethodInfo* missing.
+- **JS bitwise ops for ARM64 disassembly** — JS bitwise operators work on signed 32-bit integers. `(word & 0xFC000000)` produces a signed result, so comparison with `0x94000000` fails for BL instructions where bit 31 is set. Fix: use unsigned right shift `(word >>> 26) === 0x25` for BL, `(word >>> 10) === 0x358FC0` for BLR.
+
+### UniTask Struct ABI (ARM64)
+- **UniTask (void)**: 1 field — `IAwaiter source` at offset 0x0 (8 bytes). `null` source = completed.
+  - Returned in `x0` register only. Set `x0=0` for completed.
+- **UniTask\<T\>**: 2 fields — `T result` (returned in `x0`), `IAwaiter source` (returned in `x1`).
+  - **UniTask\<bool\>**: `x0=1` (true), `x1=0` (completed) — 16 bytes, uses x0+x1.
+  - For Memory.patchCode: `mov x0, #<result>; mov x1, #0; ret` (3 instructions, 12 bytes).
+  - For Interceptor.attach onLeave: `retval.replace(ptr(<result>))` + `this.context.x1 = ptr(0)`.
+- **CRITICAL**: `Interceptor.replace` with `NativeCallback` only controls `x0` (the return value). For 16-byte struct returns, `x1` is left uninitialized → corrupted. Use `Memory.patchCode` instead.
+
+### OnTitleAsync Architecture (KEY DISCOVERY)
+`OnTitleAsync` does NOT directly call `OnMainStoryAsync` or `CreateAsyncTitleEndContents`.
+- `OnMainStoryAsync` is triggered by the Gameplay FSM's DoUpdate loop after `FSM.RequestUpdate` is called from OnTitleAsync.
+- `CreateAsyncTitleEndContents` is called from `OnRunApplicationAsync` (parent) AFTER OnTitleAsync completes.
+- The FSM processes transitions via `DoUpdate.MoveNext` → calls `OnMainStoryAsync` as a handler → when that completes, the FSM event loop completes → OnTitleAsync's awaiter resumes → SetResult → OnRunApplicationAsync resumes.
+- **Implication**: If OnMainStoryAsync completes synchronously (patched), the FSM may not correctly route the completion back to OnTitleAsync. The FSM's internal flags (`_inUpdate`, `_doUpdateEvent`) expect async multi-frame behavior.
+
+### CreateAsyncTitleEndContents Location (CONFIRMED)
+- **CreateAsyncTitleEndContents is called from INSIDE OnMainStoryAsync**, after Story FSM, quest flow, WaitCompletionScene, etc.
+- NOP RequestUpdate → OnTitleAsync completes but CreateAsyncTitleEndContents never fires (it's not in OnRunApplicationAsync's direct chain).
+- Tail-call OnMainStoryAsync→CreateAsyncTitleEndContents → CRASH (needs full story context).
+
+### Interceptor.replace vs Memory.patchCode for FSM Handlers
+- **Memory.patchCode works** for functions called via FSM transitions (OnMainStoryAsync, PlayTitleFlowMovieAsync). The raw instruction patch doesn't involve Frida's trampoline/detour, so no MethodInfo* corruption.
+- **Interceptor.replace CRASHES** (Aborted) for the same functions. The NativeCallback detour corrupts the hidden MethodInfo* parameter that the FSM's virtual dispatch relies on.
+- **Rule**: For FSM handler methods, always use Memory.patchCode. Reserve Interceptor.replace for standalone functions not called via generic virtual dispatch.
 
 ### Frida Script Re-evaluation Guard (FIXED)
 - `awaitLibil2cpp()` was called up to **92 times** per launch — each `Interceptor.attach` stacked, causing 92x callback overhead per function call
@@ -262,6 +496,12 @@ Completion(11)           → Finish(11)           → OnFinish (natural flow)
 | SyncPurchase | 0x30A8A10 | Memory.patchCode → return UniTask\<bool>(true) instantly |
 | DecryptMasterData | 0x2775A0C | Interceptor.attach (logging only) — native AES decryption runs |
 | DarkClient.ctor deadline | 0x27A3134 | onLeave: extend deadline 0s→300s (field at +0x30) |
+| OnMainStoryAsync | 0x274E4D4 | Memory.patchCode → mov x0,#0; mov x1,#0; ret (completed UniTask) |
+| PlayTitleFlowMovieAsync | 0x274E580 | Memory.patchCode → mov x0,#0; mov x1,#0; ret (completed UniTask) |
+| IsNeedsChapterAssetDownload | 0x273C598 | Interceptor.attach onLeave: retval.replace(ptr(0)) → false |
+| CompletedWaitSceneRequestReplace | Gameplay+0x158 | Force=true on OnMainStoryAsync.MoveNext count=2 |
+| ShowDialogQuestRetry | 0x304953C | Return false (retire) — safety fallback for quest retry dialog |
+| CalculatorQuest.StartQuest | 0x27276A4 | NativeCallback returning completed UniTask — skips battle scene |
 
 ### Hooks REMOVED (proven dangerous)
 | Hook | RVA | Why Removed |
@@ -280,6 +520,8 @@ Completion(11)           → Finish(11)           → OnFinish (natural flow)
 | UserDataGet.RequestAsync.MoveNext | 0x2C5AFB4 | MoveNext hook breaks async completion chain |
 | OnFirstDownload.MoveNext | 0x28F8278 | MoveNext hook breaks async completion chain |
 | tbnz PATCH1 | 0x28fab60 | REMOVED — natural sync flow works with URL/DNS hooks |
+| OnMainStoryAsync (Interceptor.replace) | 0x274E4D4 | ABORT on launch — MethodInfo* corruption with NativeCallback on FSM handler |
+| PlayTitleFlowMovieAsync (Interceptor.replace) | 0x274E580 | Same — Interceptor.replace crashes on FSM-dispatched methods |
 
 ## Class Hierarchy
 
@@ -368,6 +610,19 @@ Gameplay.OnTitleAsync                      0x274E788
 Gameplay.OnMainStoryAsync                  0x274E4D4
 Gameplay.RunTitle                          0x274B29C
 Gameplay.<OnMainStoryAsync>d__522.MoveNext 0x2885CF8
+Gameplay.<OnRunApplicationAsync>d__524.MoveNext 0x288649C
+Gameplay.<OnTitleAsync>d__528.MoveNext     0x2886950 (size=0x4D4, 309 insns)
+Gameplay.PlayTitleFlowMovieAsync           0x274E580 (PATCHED)
+Gameplay.IsNeedsChapterAssetDownload       0x273C598 (PATCHED → false)
+Gameplay.CompletedWaitSceneRequestReplace  offset 0x158 (bool)
+Gameplay.InitializeAudioAsync              0x2737488
+Gameplay.PlaySplashAsync                   0x274A5FC
+Gameplay.InitializeUserStateAsync          0x274C5C8
+Gameplay.CreateTouch                       0x274BB80
+CalculatorQuest.StartQuest                 0x27276A4 (PATCHED → skip battle)
+DialogHelper.ShowDialogQuestRetry          0x304953C (PATCHED → false)
+AsyncUniTaskMethodBuilder.SetException     0x408C594
+AsyncUniTaskMethodBuilder.SetResult        0x408C7D4
 StateMachine.SetupStateMachine             0x2AA440C
 Story.Generate                            0x2788E28 (NO HOOK — calls FSM.Setup)
 Story.InternalInitialize                  0x2788FD4 (NO HOOK)
@@ -375,6 +630,23 @@ Story.SetupTransitions                    0x2789000 (NO HOOK)
 Story.ApplyFirstScene                     0x2785888
 Story.ApplyNewestScene                    0x27858E8
 Story.ApplyPortalOrMainScene              0x2786508
+Story.IfNeedsApplyAutoPlaying             0x2785A50
+Story.ApplyNewestExtraScene               0x2785F48
+Story.ApplyNewestBigHuntScene             0x2786058
+Story.ApplyNewestContentStoryScene        0x2786230
+Story.ApplyNewestEventScene               0x278631C
+Story.ApplySideStory                      0x2786560
+Story.ApplyMainQuestRouteIdAndSeasonId    0x27865FC
+Story.ApplyPortal                         0x27868E8
+Story.ApplyNewestMainScene                0x27869C4
+Story.InReplayedForMainStory              0x2786B18
+Story.ApplyScene(sceneId, storyType)      0x2786B90
+Story.ActivateMainStoryWithSceneId        0x2786C10
+Story.NeedsStampFirstChapter              0x2785788
+Story.SceneIdToQuestId                    0x27859E0
+Story.ApplyReplay                         0x27826D0
+ActivePlayerToEntityMainQuestStatus       0x2AB491C
+ActivePlayerToEntityReplayFlowStatus      0x2AB4CA0
 DialogHelper.ShowDialogEnterUserName      0x304939C (PATCHED → true)
 DialogHelper.ShowDialogGraphicQualitySetting 0x304946C (PATCHED → true)
 OctoManager.StartDbUpdate                 0x4C041B8

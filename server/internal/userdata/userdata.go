@@ -48,6 +48,40 @@ type EntityIUserTutorialProgress struct {
 	LatestVersion int64    // Key(4)
 }
 
+// EntityIUserQuest mirrors EntityIUserQuest [Key(0..9)].
+type EntityIUserQuest struct {
+	_msgpack             struct{} `msgpack:",asArray"`
+	UserId               int64    // Key(0)
+	QuestId              int32    // Key(1)
+	QuestStateType       int32    // Key(2) — 3 = Cleared
+	IsBattleOnly         bool     // Key(3)
+	LatestStartDatetime  int64    // Key(4) — unix millis
+	ClearCount           int32    // Key(5)
+	DailyClearCount      int32    // Key(6)
+	LastClearDatetime    int64    // Key(7) — unix millis
+	ShortestClearFrames  int32    // Key(8)
+	LatestVersion        int64    // Key(9)
+}
+
+// EntityIUserMainQuestFlowStatus mirrors EntityIUserMainQuestFlowStatus [Key(0..2)].
+type EntityIUserMainQuestFlowStatus struct {
+	_msgpack             struct{} `msgpack:",asArray"`
+	UserId               int64    // Key(0)
+	CurrentQuestFlowType int32    // Key(1)
+	LatestVersion        int64    // Key(2)
+}
+
+// EntityIUserMainQuestMainFlowStatus mirrors EntityIUserMainQuestMainFlowStatus [Key(0..5)].
+type EntityIUserMainQuestMainFlowStatus struct {
+	_msgpack                struct{} `msgpack:",asArray"`
+	UserId                  int64    // Key(0)
+	CurrentMainQuestRouteId int32    // Key(1)
+	CurrentQuestSceneId     int32    // Key(2)
+	HeadQuestSceneId        int32    // Key(3)
+	IsReachedLastQuestScene bool     // Key(4)
+	LatestVersion           int64    // Key(5)
+}
+
 // EncodeRecords serializes a slice of entities to the client-expected format:
 // a JSON array of base64-encoded MessagePack byte strings.
 func EncodeRecords(entities ...any) (string, error) {
@@ -92,11 +126,17 @@ func DefaultUserData(userID int64) map[string]string {
 }
 
 // DefaultUserDataJSON returns user data as plain JSON (fallback if msgpack doesn't work).
+// Includes user_main_quest_* tables so ApplyNewestScene may return Playing(1) instead of Failure(2).
 func DefaultUserDataJSON(userID int64) map[string]string {
 	now := time.Now().Unix()
 	return map[string]string{
 		"user": fmt.Sprintf(`[{"UserId":%d,"PlayerId":%d,"OsType":2,"PlatformType":2,"UserRestrictionType":0,"RegisterDatetime":%d,"GameStartDatetime":0,"LatestVersion":0}]`,
 			userID, userID, now),
 		"user_setting": fmt.Sprintf(`[{"UserId":%d,"IsNotifyPurchaseAlert":false,"LatestVersion":0}]`, userID),
+		// Main quest flow: scene 1, route 1, MAIN_FLOW=1 — enables natural story flow
+		"user_main_quest_flow_status":       fmt.Sprintf(`[{"UserId":%d,"CurrentQuestFlowType":1,"LatestVersion":0}]`, userID),
+		"user_main_quest_main_flow_status":  fmt.Sprintf(`[{"UserId":%d,"CurrentMainQuestRouteId":1,"CurrentQuestSceneId":1,"HeadQuestSceneId":1,"IsReachedLastQuestScene":false,"LatestVersion":0}]`, userID),
+		"user_main_quest_progress_status":   fmt.Sprintf(`[{"UserId":%d,"CurrentQuestSceneId":1,"HeadQuestSceneId":1,"CurrentQuestFlowType":1,"LatestVersion":0}]`, userID),
+		"user_main_quest_season_route":       fmt.Sprintf(`[{"UserId":%d,"MainQuestSeasonId":1,"MainQuestRouteId":1,"LatestVersion":0}]`, userID),
 	}
 }
