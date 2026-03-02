@@ -563,3 +563,79 @@ Need to trace flow?
 ├── Add logging to onLeave
 └── NEVER hook MoveNext directly
 ```
+
+---
+
+## Master Data Dumper
+
+Extract and analyze the game's master database (607 tables with all quest/story/item data).
+
+### Quick Usage
+
+```bash
+# 1. Start frida-server (if not running)
+adb shell "su -c /data/local/tmp/frida-server" &
+
+# 2. Run the automated dumper
+python3 frida/host_receiver.py
+
+# 3. Wait for game to download master data
+#    (the script will automatically extract and send data to host)
+
+# 4. Parse the extracted binary to JSON
+python3 scripts/parse_masterdata.py
+```
+
+### Output
+
+- `client/masterdata/decrypted_masterdata.bin` — Raw decrypted database (~7.8 MB)
+- `client/masterdata/info.json` — Metadata (table count, format)
+- `client/masterdata/tables/*.json` — Individual table files (607 JSON files)
+- `client/masterdata/tables/_summary.json` — Index of all tables
+
+### What Gets Extracted
+
+The master database contains:
+
+| Table Type | Examples | Description |
+|------------|----------|-------------|
+| Quest Data | `EntityMQuest`, `EntityMQuestScene` | All quests, scenes, rewards |
+| Story | `EntityMText*`, `EntityMScenario` | All dialogues and cutscenes |
+| Characters | `EntityMCharacter`, `EntityMCostume` | Characters and costumes |
+| Items | `EntityMItem`, `EntityMWeapon` | Items, weapons, materials |
+| Events | `EntityMEventQuest*` | Limited time events |
+| System | `EntityMAbility`, `EntityMBattleNpc*` | Game mechanics data |
+
+### Manual Frida Usage
+
+If you want to run the dumper manually without Python wrapper:
+
+```bash
+# Launch with dumper script
+tail -f /dev/null | frida -Uf com.square_enix.android_googleplay.nierspjp -l frida/dump_masterdata.js
+
+# The script will print when data is captured
+# Raw bytes are sent via send() - use Python receiver or Frida REPL to capture
+```
+
+### Parser Options
+
+```bash
+# Quick inspection without full extraction
+python3 scripts/parse_masterdata.py --inspect
+
+# Custom paths
+python3 scripts/parse_masterdata.py /path/to/input.bin /path/to/output/
+
+# Note: Install msgpack first
+pip install msgpack
+```
+
+### Technical Details
+
+- **Encryption**: AES-256-CBC (handled natively by game's `DecryptMasterData`)
+- **Format**: MessagePack map16 (0xde) with big-endian table count
+- **Size**: ~7.8 MB compressed, ~50+ MB as JSON
+- **Tables**: 607 named tables (EntityM*) with varying entry counts
+
+The parser uses Python's `msgpack` library to decode the binary format into human-readable JSON for analysis.
