@@ -183,10 +183,9 @@ func parseListBin(data []byte) listBinIndex {
 			break
 		}
 		i += n
-		fieldNum := tag >> 3
 		wireType := tag & 0x7
 
-		if fieldNum == 2 && wireType == 2 {
+		if wireType == 2 {
 			length, vn := readVarint(data[i:])
 			if vn == 0 || length < 0 || i+vn+length > len(data) {
 				break
@@ -195,9 +194,9 @@ func parseListBin(data []byte) listBinIndex {
 			objectID, entry, ok := parseListBinEntry(entryBytes)
 			if ok {
 				idx[objectID] = entry
+				i += vn + length
+				continue
 			}
-			i += vn + length
-			continue
 		}
 
 		next, ok := skipProtoField(wireType, data, i)
