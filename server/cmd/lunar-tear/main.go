@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 
 	pb "lunar-tear/server/gen/proto"
 	"lunar-tear/server/internal/service"
@@ -36,10 +37,26 @@ func main() {
 	grpcPort := flag.Int("grpc-port", 7777, "gRPC server port")
 	httpPort := flag.Int("http-port", 8080, "HTTP server port (Octo API)")
 	host := flag.String("host", "127.0.0.1", "hostname the client will connect to")
+	resourcesBaseURL := flag.String("resources-base-url", "", "Resources base URL for list.bin rewrite (must be exactly 43 chars); empty = derive from host (so client uses our server for assets)")
 	flag.Parse()
 
+	// Octo base URL: client uses this to fetch list and will see rewritten asset URLs if resourcesBaseURL is set
+	octoURL := "http://" + *host + ":" + strconv.Itoa(*httpPort)
+	if *resourcesBaseURL == "" {
+		// Default: rewrite list.bin so asset base URL points to our server (must be exactly 43 chars for protobuf).
+		// Use http:// so the client uses plain HTTP; our server does not speak TLS on this port.
+		candidate := "http://" + *host + ":" + strconv.Itoa(*httpPort) + "/resource-bundle-server"
+		if len(candidate) == 43 {
+			*resourcesBaseURL = candidate
+		}
+	}
+	if *resourcesBaseURL != "" && len(*resourcesBaseURL) != 43 {
+		log.Printf("[config] resources-base-url length is %d (need 43); list.bin will be served unchanged", len(*resourcesBaseURL))
+		*resourcesBaseURL = ""
+	}
+
 	// Start HTTP server for Octo API and general game HTTP (HTTP/1.1 + HTTP/2 cleartext)
-	octoServer := service.NewOctoHTTPServer()
+	octoServer := service.NewOctoHTTPServer(*resourcesBaseURL)
 	h2s := &http2.Server{}
 	octoHandler := h2c.NewHandler(octoServer.Handler(), h2s)
 	go func() {
@@ -79,7 +96,7 @@ func main() {
 	)
 
 	pb.RegisterUserServiceServer(grpcServer, service.NewUserServiceServer())
-	pb.RegisterConfigServiceServer(grpcServer, service.NewConfigServiceServer(*host, int32(*grpcPort)))
+	pb.RegisterConfigServiceServer(grpcServer, service.NewConfigServiceServer(*host, int32(*grpcPort), octoURL))
 	pb.RegisterDataServiceServer(grpcServer, service.NewDataServiceServer())
 	pb.RegisterTutorialServiceServer(grpcServer, service.NewTutorialServiceServer())
 	pb.RegisterGameplayServiceServer(grpcServer, service.NewGameplayServiceServer())

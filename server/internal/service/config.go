@@ -14,10 +14,11 @@ type ConfigServiceServer struct {
 	pb.UnimplementedConfigServiceServer
 	GrpcHost string
 	GrpcPort int32
+	OctoURL  string // HTTP base URL for Octo (list + assets); client uses this instead of default resources.app.nierreincarnation.com
 }
 
-func NewConfigServiceServer(host string, port int32) *ConfigServiceServer {
-	return &ConfigServiceServer{GrpcHost: host, GrpcPort: port}
+func NewConfigServiceServer(host string, port int32, octoURL string) *ConfigServiceServer {
+	return &ConfigServiceServer{GrpcHost: host, GrpcPort: port, OctoURL: octoURL}
 }
 
 func (s *ConfigServiceServer) GetReviewServerConfig(ctx context.Context, _ *emptypb.Empty) (*pb.GetReviewServerConfigResponse, error) {
@@ -33,7 +34,7 @@ func (s *ConfigServiceServer) GetReviewServerConfig(ctx context.Context, _ *empt
 			AppId:           1,
 			ClientSecretKey: "secret",
 			AesKey:          "aeskey",
-			Url:             "",
+			Url:             s.OctoURL,
 		},
 		WebView: &pb.WebViewConfig{
 			BaseUrl: "http://localhost:8080",

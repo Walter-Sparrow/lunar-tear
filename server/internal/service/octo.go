@@ -1,21 +1,94 @@
 package service
 
 import (
+	"bytes"
+	"crypto/md5"
+	"encoding/hex"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 )
 
 const termsOfServiceHTML = `<html><head><title>Terms of Service</title></head><body>###1###</body></html>`
 const privacyPolicyHTML = `<html><head><title>Privacy Policy</title></head><body>###2###</body></html>`
 
+// resourcesURLOriginal is the base URL embedded in list.bin; must be replaced with same-length (43 bytes) when rewriting.
+const resourcesURLOriginal = "https://resources.app.nierreincarnation.com"
+
 type OctoHTTPServer struct {
-	mux *http.ServeMux
+	mux              *http.ServeMux
+	ResourcesBaseURL string // if non-empty and exactly 43 chars, list.bin is rewritten to use this base for asset URLs
+	revisions        *revisionTracker
+	resolver         *assetResolver
 }
 
-func NewOctoHTTPServer() *OctoHTTPServer {
-	s := &OctoHTTPServer{mux: http.NewServeMux()}
+// countResponseWriter wraps http.ResponseWriter and counts bytes written.
+type countResponseWriter struct {
+	http.ResponseWriter
+	n int64
+}
+
+type fileMD5Entry struct {
+	size    int64
+	modTime int64
+	md5     string
+}
+
+var (
+	fileMD5Cache   = make(map[string]fileMD5Entry)
+	fileMD5CacheMu sync.RWMutex
+)
+
+func (c *countResponseWriter) Write(p []byte) (int, error) {
+	n, err := c.ResponseWriter.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
+func fileMD5Hex(path string, info os.FileInfo) (string, error) {
+	modTime := info.ModTime().UnixNano()
+
+	fileMD5CacheMu.RLock()
+	cached, ok := fileMD5Cache[path]
+	fileMD5CacheMu.RUnlock()
+	if ok && cached.size == info.Size() && cached.modTime == modTime {
+		return cached.md5, nil
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	sum := hex.EncodeToString(h.Sum(nil))
+
+	fileMD5CacheMu.Lock()
+	fileMD5Cache[path] = fileMD5Entry{
+		size:    info.Size(),
+		modTime: modTime,
+		md5:     sum,
+	}
+	fileMD5CacheMu.Unlock()
+	return sum, nil
+}
+
+func NewOctoHTTPServer(resourcesBaseURL string) *OctoHTTPServer {
+	s := &OctoHTTPServer{
+		mux:              http.NewServeMux(),
+		ResourcesBaseURL: resourcesBaseURL,
+		revisions:        newRevisionTracker(),
+		resolver:         newAssetResolver(),
+	}
 	s.mux.HandleFunc("/", s.handleAll)
 	return s
 }
@@ -65,6 +138,12 @@ func (s *OctoHTTPServer) handleAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Asset bundle requests (from list.bin URLs: .../unso-{v}-{type}/{o}?generation=...&alt=media)
+	if strings.Contains(path, "/unso-") {
+		s.serveUnsoAsset(w, r, path)
+		return
+	}
+
 	// Log request body for debugging Octo protocol
 	if r.Body != nil {
 		body := make([]byte, 4096)
@@ -90,12 +169,17 @@ func (s *OctoHTTPServer) handleOctoV2(w http.ResponseWriter, r *http.Request, pa
 	if strings.Contains(path, "/list/") {
 		parts := strings.Split(path, "/")
 		if len(parts) > 0 {
-			revision := parts[len(parts)-1]
-			if revision != "" {
-				filePath := "assets/revisions/" + revision + "/list.bin"
-				log.Printf("[OctoV2] Resource list request — serving %s (revision=%s)", filePath, revision)
-				w.Header().Set("Content-Type", "application/x-protobuf")
-				http.ServeFile(w, r, filePath)
+			requestedRevision := parts[len(parts)-1]
+			if requestedRevision != "" {
+				revision := "0"
+				filePath := "assets/revisions/0/list.bin"
+				if requestedRevision != revision {
+					log.Printf("[OctoV2] Resource list request revision=%s canonicalized to revision=%s", requestedRevision, revision)
+				}
+				log.Printf("[OctoV2] Resource list request — serving %s (requested_revision=%s canonical_revision=%s)", filePath, requestedRevision, revision)
+				s.revisions.Remember(r.RemoteAddr, revision)
+				go s.resolver.Prewarm(revision)
+				s.serveListBin(w, filePath)
 				return
 			}
 		}
@@ -123,18 +207,150 @@ func (s *OctoHTTPServer) handleOctoV2(w http.ResponseWriter, r *http.Request, pa
 func (s *OctoHTTPServer) serveOctoV1List(w http.ResponseWriter, r *http.Request, path string) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	// ["v1", "list", "300116832", "0"] -> revision = last segment
-	revision := "0"
+	requestedRevision := "0"
 	if len(parts) >= 4 {
-		revision = parts[len(parts)-1]
+		requestedRevision = parts[len(parts)-1]
 	}
-	filePath := "assets/revisions/" + revision + "/list.bin"
-	if _, err := os.Stat(filePath); err != nil {
-		log.Printf("[OctoV1] list not found: %s, falling back to revision 0", filePath)
-		filePath = "assets/revisions/0/list.bin"
+	revision := "0"
+	filePath := "assets/revisions/0/list.bin"
+	if requestedRevision != revision {
+		log.Printf("[OctoV1] list request revision=%s canonicalized to revision=%s", requestedRevision, revision)
 	}
-	log.Printf("[OctoV1] %s %s — serving %s", r.Method, path, filePath)
+	log.Printf("[OctoV1] %s %s — serving %s (requested_revision=%s canonical_revision=%s)", r.Method, path, filePath, requestedRevision, revision)
+	s.revisions.Remember(r.RemoteAddr, revision)
+	go s.resolver.Prewarm(revision)
+	s.serveListBin(w, filePath)
+}
+
+// serveUnsoAsset serves asset bundle or resource for URLs like /resource-bundle-server/unso-{version}-{type}/{object_id}.
+func (s *OctoHTTPServer) serveUnsoAsset(w http.ResponseWriter, r *http.Request, path string) {
+	log.Printf("[HTTP] Asset request: %s %s (Host: %s)", r.Method, r.URL.String(), r.Host)
+	for k, v := range r.Header {
+		log.Printf("[HTTP]   %s: %v", k, v)
+	}
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	var segment, objectID string
+	for i, p := range parts {
+		if strings.HasPrefix(p, "unso-") && i+1 < len(parts) {
+			segment = p
+			objectID = parts[i+1]
+			break
+		}
+	}
+	if segment == "" || objectID == "" {
+		log.Printf("[HTTP] Asset request malformed: %s", path)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	// segment = "unso-200116832-assetbundle" -> type = last part after "-"
+	segParts := strings.Split(segment, "-")
+	if len(segParts) < 2 {
+		log.Printf("[HTTP] Asset request segment malformed: %s", segment)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	assetType := segParts[len(segParts)-1] // "assetbundle" or "resources"
+	if assetType != "assetbundle" && assetType != "resources" {
+		log.Printf("[HTTP] Asset request unknown type: %s", assetType)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	activeRevision := s.revisions.Active(r.RemoteAddr)
+	resolution, ok := s.resolver.Resolve(objectID, assetType, activeRevision)
+	if !ok {
+		log.Printf("[HTTP] Asset not found: %s (object_id=%s type=%s active_revision=%s) no candidates", path, objectID, assetType, activeRevision)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	log.Printf("[HTTP] Asset lookup: object_id=%s type=%s active_revision=%s list_revision=%s candidates=%d", objectID, assetType, resolution.ActiveRevision, resolution.ListRevision, len(resolution.Candidates))
+	baseDir := filepath.Join("assets", "revisions")
+	var triedPaths []string
+	var md5Mismatches []string
+	for _, candidate := range resolution.Candidates {
+		rel, err := filepath.Rel(baseDir, candidate.Path)
+		if err != nil || strings.Contains(rel, "..") || filepath.IsAbs(rel) {
+			continue
+		}
+		triedPaths = append(triedPaths, candidate.Revision+":"+candidate.Path+" ["+candidate.Source+"]")
+		f, err := os.Open(candidate.Path)
+		if err != nil {
+			continue
+		}
+		info, err := f.Stat()
+		if err != nil {
+			f.Close()
+			continue
+		}
+		if info.IsDir() {
+			f.Close()
+			continue
+		}
+		// Only validate size when list.bin gave a plausible file size (>= 256); small values are often wrong (e.g. different proto field).
+		if resolution.ListSize >= 256 && info.Size() != resolution.ListSize {
+			f.Close()
+			continue
+		}
+		if candidate.ExpectedMD5 != "" {
+			actualMD5, err := fileMD5Hex(candidate.Path, info)
+			if err != nil {
+				log.Printf("[HTTP] Asset md5 read failed: %s err=%v", candidate.Path, err)
+				f.Close()
+				continue
+			}
+			if !strings.EqualFold(actualMD5, candidate.ExpectedMD5) {
+				md5Mismatches = append(md5Mismatches, candidate.Revision+":"+candidate.Path+" ["+candidate.Source+"] expected="+candidate.ExpectedMD5+" actual="+actualMD5)
+				log.Printf("[HTTP] Asset md5 mismatch: object_id=%s type=%s path=%s expected=%s actual=%s active_revision=%s list_revision=%s resolved_revision=%s source=%s", objectID, assetType, candidate.Path, candidate.ExpectedMD5, actualMD5, resolution.ActiveRevision, resolution.ListRevision, candidate.Revision, candidate.Source)
+				f.Close()
+				continue
+			}
+		}
+		defer f.Close()
+		diskPath, _ := filepath.Abs(candidate.Path)
+		log.Printf("[HTTP] Serving asset: %s -> %s (%d bytes, active_revision=%s list_revision=%s resolved_revision=%s source=%s expected_md5=%s)", path, candidate.Path, info.Size(), resolution.ActiveRevision, resolution.ListRevision, candidate.Revision, candidate.Source, candidate.ExpectedMD5)
+		log.Printf("[HTTP] Resource path (disk): %s", diskPath)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		cw := &countResponseWriter{ResponseWriter: w}
+		http.ServeContent(cw, r, filepath.Base(candidate.Path), info.ModTime(), f)
+		log.Printf("[HTTP] Transferred asset: %s (%d bytes)", path, cw.n)
+		return
+	}
+	if len(md5Mismatches) > 0 {
+		log.Printf("[HTTP] Asset md5 mismatches: object_id=%s type=%s active_revision=%s list_revision=%s mismatches=%v", objectID, assetType, resolution.ActiveRevision, resolution.ListRevision, md5Mismatches)
+	}
+	log.Printf("[HTTP] Asset not found: %s (object_id=%s type=%s active_revision=%s list_revision=%s) tried paths: %v", path, objectID, assetType, resolution.ActiveRevision, resolution.ListRevision, triedPaths)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.WriteHeader(http.StatusNotFound)
+}
+
+// serveListBin reads list.bin from filePath, optionally rewrites the resource base URL to s.ResourcesBaseURL
+// (must be exactly 43 bytes to preserve protobuf layout), and writes the result to w.
+func (s *OctoHTTPServer) serveListBin(w http.ResponseWriter, filePath string) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Printf("[Octo] list.bin read error: %v", err)
+		http.Error(w, "list not found", http.StatusNotFound)
+		return
+	}
+	orig := []byte(resourcesURLOriginal)
+	if s.ResourcesBaseURL != "" {
+		if len(s.ResourcesBaseURL) != len(orig) {
+			log.Printf("[Octo] resources-base-url length is %d, need %d — serving list.bin unchanged", len(s.ResourcesBaseURL), len(orig))
+		} else {
+			repl := []byte(s.ResourcesBaseURL)
+			if idx := bytes.Index(data, orig); idx >= 0 {
+				copy(data[idx:], repl)
+				log.Printf("[Octo] list.bin: rewrote resource base URL to %s", s.ResourcesBaseURL)
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "application/x-protobuf")
-	http.ServeFile(w, r, filePath)
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
 }
 
 // serveDatabaseBinE serves MasterMemory database: /assets/release/{version}/database.bin.e
