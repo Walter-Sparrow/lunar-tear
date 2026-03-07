@@ -263,6 +263,27 @@ function readTuple2Array2DSummary(result, outerLimit = 4, innerLimit = 4) {
   }
 }
 
+function readTuple2ArrayFocusedTableSummary(tupleArray, tableNames) {
+  try {
+    if (!tupleArray || tupleArray.isNull()) return '<null>';
+    const len = readManagedArrayLength(tupleArray);
+    const wanted = new Set(tableNames);
+    const found = new Map();
+    for (let i = 0; i < len; i += 1) {
+      const tupleBase = tupleArray.add(0x20 + i * (Process.pointerSize * 2));
+      const tableName = readManagedString(tupleBase.readPointer());
+      if (!wanted.has(tableName)) continue;
+      const records = tupleBase.add(Process.pointerSize).readPointer();
+      found.set(tableName, readListSize(records));
+    }
+    return tableNames
+      .map((name) => `${name}=${found.has(name) ? found.get(name) : '<missing>'}`)
+      .join(', ');
+  } catch (error) {
+    return '<focused-tuple-summary-err>';
+  }
+}
+
 function moduleOffsetHex(addr) {
   try {
     if (!addr || addr.isNull() || !libil2cpp) return '<null>';
@@ -510,6 +531,26 @@ awaitLibil2cpp(() => {
         console.log(`[UserDB] TaskAwaiter<TResult>.GetResult names ${readStringListListSummary(retval)}`);
       } else if (this.caller === '0x361b8ac') {
         console.log(`[UserDB] TaskAwaiter<TResult>.GetResult whenAll ${readTuple2Array2DSummary(retval)}`);
+        const firstInner = readManagedArrayElementPointer(retval, 0);
+        console.log(
+          `[UserDB] TaskAwaiter<TResult>.GetResult focus ${readTuple2ArrayFocusedTableSummary(firstInner, [
+            'IUser',
+            'IUserStatus',
+            'IUserGem',
+            'IUserProfile',
+            'IUserLogin',
+            'IUserLoginBonus',
+            'IUserTutorialProgress',
+            'IUserCharacter',
+            'IUserCostume',
+            'IUserWeapon',
+            'IUserCompanion',
+            'IUserDeck',
+            'IUserDeckCharacter',
+            'IUserQuest',
+            'IUserMission',
+          ])}`,
+        );
       } else if (this.caller === '0x3a45c7c') {
         const userDataJson = readObjectPointer(retval, 0x0);
         console.log(

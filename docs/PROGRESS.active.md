@@ -40,6 +40,23 @@ Minimal client patches, server-first implementation, and a clean path to the hom
 - Confirmed by runtime tracing: the `WhenAll` result is structurally populated, not empty; for example, `IUser` has `1` record while many optional tables are `0`.
 - Confirmed by runtime tracing: `UserDataGet.<RequestAsync>d__11.MoveNext` reaches async terminal state `-2` before the posted error callback fires.
 - Confirmed by runtime tracing: after those successful awaits, `UnitySynchronizationContext2.Post` is called from inside the `UserDataGet` flow at caller `0x361BD40`, with a callback bound to the `UserDataGet` instance.
+- Confirmed by runtime tracing: the focused per-table result summary now shows non-empty records for all currently suspected core user tables:
+  - `IUser=1`
+  - `IUserStatus=1`
+  - `IUserGem=1`
+  - `IUserProfile=1`
+  - `IUserLogin=1`
+  - `IUserLoginBonus=1`
+  - `IUserTutorialProgress=1`
+  - `IUserCharacter=1`
+  - `IUserCostume=1`
+  - `IUserWeapon=1`
+  - `IUserCompanion=1`
+  - `IUserDeck=1`
+  - `IUserDeckCharacter=1`
+  - `IUserQuest=1`
+  - `IUserMission=1`
+- Confirmed by runtime/server tracing: forcing a real `RegisterUser -> Auth -> GetUserData` sequence does not change the final failure branch; registration/auth ordering is not the current blocker.
 
 ## Current Blocker
 The client still stalls inside the client-side `UserDataGet.RequestAsync` flow after `GetUserDataApi.RequestAsyncMethod(list)` finishes. The flow now appears to take `UserDataGet`'s own error callback path before user DB build/publication becomes visible.
@@ -55,6 +72,7 @@ Observed boundary:
 - Seen on client: `Task.WhenAll<TResult[]>` create a `WhenAllPromise`
 - Seen on client: `UserDataGet.<RequestAsync>d__11.MoveNext` finish with state `-2`
 - Seen on client: `UnitySynchronizationContext2.Post` from caller `0x361BD40`
+- Seen on client: focused result counts show `1` record for all currently suspected core user tables, including `IUserQuest` and `IUserMission`
 - Seen on client: `UserDataGet.<RequestAsync>b__11_3`
 - Seen on client: `UserDataGet.HandleError.Invoke`
 - Seen on client: `CalculatorNetworking.GetUserDataGetDataSource(onSuccess=<null>, onError=HandleError)`
@@ -74,8 +92,9 @@ That makes the likely fault window:
 - likely routed through whichever caller wires the `HandleError` delegate into `GetUserDataGetDataSource`
 - title is downstream, not the root cause: `Title.<SyncUserData>b__0` appears to consume the `UserDataGet` failure by flipping its local error flag
 - `InitializeDefault` not wiring fetch handlers suggests those fields may be unused in this runtime build, or are not the source of the failure we are seeing
-- the remaining unknown is which acceptance rule on the returned table set causes `UserDataGet` to post the error-side callback despite successful awaits
-- not ruled in yet: a client-side validation failure on one or more required tables with `0` records
+- the remaining unknown is which post-await callback-selection rule causes `UserDataGet` to post the error-side callback despite successful awaits and despite currently suspected core tables being populated
+- ruled out enough to deprioritize: the simple hypothesis that the failure is caused only by obviously empty core user tables such as `IUserStatus`, `IUserProfile`, `IUserLogin`, `IUserTutorialProgress`, `IUserCharacter`, `IUserCostume`, `IUserWeapon`, `IUserCompanion`, `IUserDeck`, `IUserDeckCharacter`, `IUserQuest`, or `IUserMission`
+- ruled out enough to deprioritize: registration/auth sequencing as the primary cause of this branch
 
 ## Current Instrumentation Strategy
 Prefer narrow, low-risk hooks only:
@@ -95,10 +114,12 @@ Avoid:
   If success never fires, the problem is in the orchestration/callback layer; if success fires but build still never starts, the next bug is after callback dispatch.
 - We need to determine whether `UserDataGet.<RequestAsync>b__11_1` is a success-side callback and whether it is simply absent in our failing path.
   This helps separate "request completed but was marked failed" from "request never reached success handling at all."
-- We need to identify which tables in the `WhenAll` result are treated as required by the runtime branch after aggregation.
-  This should tell us whether the server is still missing mandatory user tables even though the overall tuple set looks structurally valid.
 - We need to determine whether caller `0x361BD40` is explicitly posting `UserDataGet.<RequestAsync>b__11_3` to the main thread, and under what condition it chooses that callback over `b__11_1`.
   This should tell us whether the branch is content-validation driven or simply wired incorrectly in this build.
+- We need to identify the concrete callback target/method behind the `SendOrPostCallback` posted from caller `0x361BD40`.
+  This should tell us whether the runtime is directly posting the error-side lambda or is routing through another helper that decides success vs error.
+- We need to determine whether any non-obvious tables outside the currently seeded core set still participate in the branch decision.
+  This should keep us from overfitting to the current shortlist if the real validation depends on another table family.
 - We need to determine whether `CalculatorNetworking.DisposeUserDataGetDataSource(...)` runs after the posted error callback path.
   This should tell us whether the datasource wrapper is tearing itself down only after the failure decision is already made.
 - We need to avoid crash-prone introspection in `HandleError.Invoke`.
@@ -109,15 +130,16 @@ Avoid:
 - If `Title.<SyncUserData>d__7` shows an `isError` flip right after `UserDataGet.HandleError.Invoke`, we will know the visible stall is just the title flow honoring that error flag.
 - Since filtered `Task.WhenAll(...)` logging and both await `GetResult` hooks now fire successfully, we can stop blaming transport and basic aggregation.
 - If the per-table result summary looks sane but the main-thread post still targets the error-side callback, the next investigation should stay inside runtime callback-selection logic rather than server RPC transport.
-- If a small set of supposedly required tables are the only suspicious zero-record entries, the next useful server work is to seed those tables rather than broad user-data rewrites.
+- Since the focused summary now shows non-empty counts for the currently suspected core tables, the next useful work is no longer broad server seeding but tighter callback/post-path analysis.
 - If success-side callbacks never fire, the next investigation should stay inside `UserDataGet` and `CalculatorNetworking` runtime-only methods.
 - If success-side callbacks do fire, then we should move forward again toward worker scheduling and DB build/publication.
 
 ## Immediate Next Checks
 - Keep the existing narrow `UserDataGet` / `Title` callback hooks, but shift the next focus to runtime orchestration rather than title ownership.
 - Keep the filtered `Task.WhenAll<TResult[]>` and await-result hooks; they have now confirmed successful aggregation.
-- Refine the `WhenAll` summary to highlight only non-zero tables and a shortlist of suspicious zero-record tables such as `IUserStatus`, `IUserQuest`, `IUserDeck`, `IUserCharacter`, `IUserWeapon`, `IUserCompanion`, and `IUserCostume`.
 - Determine what caller `0x361BD40` is, and whether it explicitly posts `UserDataGet.<RequestAsync>b__11_3` rather than `b__11_1`.
+- Resolve the posted `SendOrPostCallback` target more precisely so we can tell whether the callback is directly bound to the error-side method or routed through another helper/thunk.
+- Keep `DisposeUserDataGetDataSource(...)` tracing in place, but deprioritize further bulk user-table seeding unless a new focused result points to another concrete missing table.
 - Trace `CalculatorNetworking.DisposeUserDataGetDataSource(...)` to see whether teardown happens only after the same failing branch has already been selected.
 - Determine whether `UserDataGet.HandleSuccess.Invoke` ever fires in a healthy branch.
 - Keep watching `UserDataGet.<RequestAsync>b__11_1(object _)` versus `UserDataGet.<RequestAsync>b__11_3(object _)`.

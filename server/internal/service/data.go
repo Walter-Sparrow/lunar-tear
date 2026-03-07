@@ -39,7 +39,6 @@ func (s *DataServiceServer) GetUserData(ctx context.Context, req *pb.UserDataGet
 	log.Printf("[DataService] GetUserData: tables=%v", req.TableName)
 
 	defaults := userdata.DefaultUserDataJSONClientTables(mock.DefaultUserID)
-	defaults["IUserQuest"] = "[]"
 	result := make(map[string]string)
 
 	for _, table := range req.TableName {

@@ -211,6 +211,41 @@ type EntityIUserDeck struct {
 	LatestVersion           int64    // Key(8)
 }
 
+// EntityIUserLogin mirrors EntityIUserLogin [Key(0..6)].
+type EntityIUserLogin struct {
+	_msgpack                  struct{} `msgpack:",asArray"`
+	UserId                    int64    // Key(0)
+	TotalLoginCount           int32    // Key(1)
+	ContinualLoginCount       int32    // Key(2)
+	MaxContinualLoginCount    int32    // Key(3)
+	LastLoginDatetime         int64    // Key(4)
+	LastComebackLoginDatetime int64    // Key(5)
+	LatestVersion             int64    // Key(6)
+}
+
+// EntityIUserLoginBonus mirrors EntityIUserLoginBonus [Key(0..5)].
+type EntityIUserLoginBonus struct {
+	_msgpack                    struct{} `msgpack:",asArray"`
+	UserId                      int64    // Key(0)
+	LoginBonusId                int32    // Key(1)
+	CurrentPageNumber           int32    // Key(2)
+	CurrentStampNumber          int32    // Key(3)
+	LatestRewardReceiveDatetime int64    // Key(4)
+	LatestVersion               int64    // Key(5)
+}
+
+// EntityIUserMission mirrors EntityIUserMission [Key(0..6)].
+type EntityIUserMission struct {
+	_msgpack                  struct{} `msgpack:",asArray"`
+	UserId                    int64    // Key(0)
+	MissionId                 int32    // Key(1)
+	StartDatetime             int64    // Key(2)
+	ProgressValue             int32    // Key(3)
+	MissionProgressStatusType int32    // Key(4)
+	ClearDatetime             int64    // Key(5)
+	LatestVersion             int64    // Key(6)
+}
+
 // EncodeRecords serializes a slice of entities to the client-expected format:
 // a JSON array of base64-encoded MessagePack byte strings.
 func EncodeRecords(entities ...any) (string, error) {
@@ -272,7 +307,10 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		starterCostumeID   = int32(1)
 		starterWeaponID    = int32(1)
 		starterCompanionID = int32(1)
+		starterQuestID     = int32(1)
+		starterMissionID   = int32(1)
 		questDeckType      = int32(1)
+		missionInProgress  = int32(1)
 	)
 	const (
 		starterCostumeUUID       = "starter-costume-0001"
@@ -404,6 +442,51 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		Power:                   100,
 		LatestVersion:           0,
 	})
+	userLoginJSON, _ := encodeJSONRecords(&EntityIUserLogin{
+		UserId:                    userID,
+		TotalLoginCount:           1,
+		ContinualLoginCount:       1,
+		MaxContinualLoginCount:    1,
+		LastLoginDatetime:         now,
+		LastComebackLoginDatetime: 0,
+		LatestVersion:             0,
+	})
+	userLoginBonusJSON, _ := encodeJSONRecords(&EntityIUserLoginBonus{
+		UserId:                      userID,
+		LoginBonusId:                1,
+		CurrentPageNumber:           1,
+		CurrentStampNumber:          0,
+		LatestRewardReceiveDatetime: 0,
+		LatestVersion:               0,
+	})
+	userTutorialProgressJSON, _ := encodeJSONRecords(&EntityIUserTutorialProgress{
+		UserId:        userID,
+		TutorialType:  1,
+		ProgressPhase: 0,
+		ChoiceId:      0,
+		LatestVersion: 0,
+	})
+	userQuestJSON, _ := encodeJSONRecords(&EntityIUserQuest{
+		UserId:              userID,
+		QuestId:             starterQuestID,
+		QuestStateType:      0,
+		IsBattleOnly:        false,
+		LatestStartDatetime: acquiredAtMillis,
+		ClearCount:          0,
+		DailyClearCount:     0,
+		LastClearDatetime:   0,
+		ShortestClearFrames: 0,
+		LatestVersion:       0,
+	})
+	userMissionJSON, _ := encodeJSONRecords(&EntityIUserMission{
+		UserId:                    userID,
+		MissionId:                 starterMissionID,
+		StartDatetime:             now,
+		ProgressValue:             0,
+		MissionProgressStatusType: missionInProgress,
+		ClearDatetime:             0,
+		LatestVersion:             0,
+	})
 
 	return map[string]string{
 		"user":                             userJSON,
@@ -417,6 +500,11 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		"user_companion":                   userCompanionJSON,
 		"user_deck_character":              userDeckCharacterJSON,
 		"user_deck":                        userDeckJSON,
+		"user_login":                       userLoginJSON,
+		"user_login_bonus":                 userLoginBonusJSON,
+		"user_tutorial_progress":           userTutorialProgressJSON,
+		"user_quest":                       userQuestJSON,
+		"user_mission":                     userMissionJSON,
 		"user_main_quest_flow_status":      mainQuestFlowJSON,
 		"user_main_quest_main_flow_status": mainQuestMainFlowJSON,
 		"user_main_quest_progress_status":  mainQuestProgressJSON,
@@ -440,9 +528,14 @@ func DefaultUserDataJSONClientTables(userID int64) map[string]string {
 		"IUserCompanion":               defaultsSnake["user_companion"],
 		"IUserDeckCharacter":           defaultsSnake["user_deck_character"],
 		"IUserDeck":                    defaultsSnake["user_deck"],
+		"IUserLogin":                   defaultsSnake["user_login"],
+		"IUserLoginBonus":              defaultsSnake["user_login_bonus"],
+		"IUserMission":                 defaultsSnake["user_mission"],
 		"IUserMainQuestFlowStatus":     defaultsSnake["user_main_quest_flow_status"],
 		"IUserMainQuestMainFlowStatus": defaultsSnake["user_main_quest_main_flow_status"],
 		"IUserMainQuestProgressStatus": defaultsSnake["user_main_quest_progress_status"],
 		"IUserMainQuestSeasonRoute":    defaultsSnake["user_main_quest_season_route"],
+		"IUserQuest":                   defaultsSnake["user_quest"],
+		"IUserTutorialProgress":        defaultsSnake["user_tutorial_progress"],
 	}
 }
