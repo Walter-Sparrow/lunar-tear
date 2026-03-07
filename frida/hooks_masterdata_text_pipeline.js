@@ -121,6 +121,180 @@ function readBoxedPointer(obj, fieldOffset) {
   }
 }
 
+function readRawInt32(rawPtr, fieldOffset) {
+  try {
+    if (!rawPtr || rawPtr.isNull()) return null;
+    return rawPtr.add(fieldOffset).readS32();
+  } catch (error) {
+    return null;
+  }
+}
+
+function readRawPointer(rawPtr, fieldOffset) {
+  try {
+    if (!rawPtr || rawPtr.isNull()) return ptr(0);
+    return rawPtr.add(fieldOffset).readPointer();
+  } catch (error) {
+    return ptr(0);
+  }
+}
+
+function readObjectBool(obj, fieldOffset) {
+  try {
+    if (!obj || obj.isNull()) return null;
+    return obj.add(0x10 + fieldOffset).readU8() !== 0;
+  } catch (error) {
+    return null;
+  }
+}
+
+function readObjectPointer(obj, fieldOffset) {
+  try {
+    if (!obj || obj.isNull()) return ptr(0);
+    return obj.add(0x10 + fieldOffset).readPointer();
+  } catch (error) {
+    return ptr(0);
+  }
+}
+
+function readManagedArrayLength(arr) {
+  try {
+    if (!arr || arr.isNull()) return -1;
+    return arr.add(0x18).readS32();
+  } catch (error) {
+    return -1;
+  }
+}
+
+function readManagedArrayElementPointer(arr, index) {
+  try {
+    if (!arr || arr.isNull()) return ptr(0);
+    if (index < 0) return ptr(0);
+    return arr.add(0x20 + index * Process.pointerSize).readPointer();
+  } catch (error) {
+    return ptr(0);
+  }
+}
+
+function readListSize(list) {
+  try {
+    if (!list || list.isNull()) return -1;
+    return list.add(0x18).readS32();
+  } catch (error) {
+    return -1;
+  }
+}
+
+function readListItemsArray(list) {
+  try {
+    if (!list || list.isNull()) return ptr(0);
+    return list.add(0x10).readPointer();
+  } catch (error) {
+    return ptr(0);
+  }
+}
+
+function readListElementPointer(list, index) {
+  const items = readListItemsArray(list);
+  return readManagedArrayElementPointer(items, index);
+}
+
+function readStringListSummary(list, limit = 8) {
+  try {
+    if (!list || list.isNull()) return '<null>';
+    const size = readListSize(list);
+    const out = [];
+    for (let i = 0; i < Math.min(size, limit); i += 1) {
+      out.push(readManagedString(readListElementPointer(list, i)));
+    }
+    const suffix = size > limit ? ', ...' : '';
+    return `size=${size} [${out.join(', ')}${suffix}]`;
+  } catch (error) {
+    return '<string-list-err>';
+  }
+}
+
+function readStringListListSummary(listOfLists, outerLimit = 4, innerLimit = 8) {
+  try {
+    if (!listOfLists || listOfLists.isNull()) return '<null>';
+    const size = readListSize(listOfLists);
+    const out = [];
+    for (let i = 0; i < Math.min(size, outerLimit); i += 1) {
+      out.push(`#${i}:${readStringListSummary(readListElementPointer(listOfLists, i), innerLimit)}`);
+    }
+    const suffix = size > outerLimit ? ', ...' : '';
+    return `size=${size} {${out.join(' | ')}${suffix}}`;
+  } catch (error) {
+    return '<string-list-list-err>';
+  }
+}
+
+function readTuple2ArraySummary(tupleArray, limit = 4) {
+  try {
+    if (!tupleArray || tupleArray.isNull()) return '<null>';
+    const len = readManagedArrayLength(tupleArray);
+    const out = [];
+    for (let i = 0; i < Math.min(len, limit); i += 1) {
+      const tupleBase = tupleArray.add(0x20 + i * (Process.pointerSize * 2));
+      const tableName = readManagedString(tupleBase.readPointer());
+      const records = tupleBase.add(Process.pointerSize).readPointer();
+      out.push(`${tableName}:records=${readListSize(records)}`);
+    }
+    const suffix = len > limit ? ', ...' : '';
+    return `len=${len} [${out.join(', ')}${suffix}]`;
+  } catch (error) {
+    return '<tuple-array-err>';
+  }
+}
+
+function readTuple2Array2DSummary(result, outerLimit = 4, innerLimit = 4) {
+  try {
+    if (!result || result.isNull()) return '<null>';
+    const outerLen = readManagedArrayLength(result);
+    const out = [];
+    for (let i = 0; i < Math.min(outerLen, outerLimit); i += 1) {
+      const inner = readManagedArrayElementPointer(result, i);
+      out.push(`#${i}:${readTuple2ArraySummary(inner, innerLimit)}`);
+    }
+    const suffix = outerLen > outerLimit ? ', ...' : '';
+    return `outerLen=${outerLen} {${out.join(' | ')}${suffix}}`;
+  } catch (error) {
+    return '<tuple-array-2d-err>';
+  }
+}
+
+function moduleOffsetHex(addr) {
+  try {
+    if (!addr || addr.isNull() || !libil2cpp) return '<null>';
+    return addr.sub(libil2cpp).toString();
+  } catch (error) {
+    return '<err>';
+  }
+}
+
+function isLikelyUserDataGetFlowCaller(addr) {
+  try {
+    if (!addr || addr.isNull() || !libil2cpp) return false;
+    const offset = addr.sub(libil2cpp).toUInt32();
+    return offset >= 0x361ad5c && offset <= 0x361c000;
+  } catch (error) {
+    return false;
+  }
+}
+
+function isLikelyUserDataPipelineCaller(addr) {
+  try {
+    if (!addr || addr.isNull() || !libil2cpp) return false;
+    const offset = addr.sub(libil2cpp).toUInt32();
+    return (
+      (offset >= 0x361ad5c && offset <= 0x361c000) ||
+      (offset >= 0x3a455b8 && offset <= 0x3a46200)
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
 function readClientErrorSummary(err) {
   try {
     if (!err || err.isNull()) return '<null>';
@@ -129,6 +303,27 @@ function readClientErrorSummary(err) {
   } catch (error) {
     return `<client-error-err ${error}>`;
   }
+}
+
+function readPointerSlotSummary(obj, fieldOffset) {
+  try {
+    if (!obj || obj.isNull()) return `+0x${fieldOffset.toString(16)}=<null>`;
+    const value = obj.add(0x10 + fieldOffset).readPointer();
+    return `+0x${fieldOffset.toString(16)}=${pointerSummary(value)}`;
+  } catch (error) {
+    return `+0x${fieldOffset.toString(16)}=<err>`;
+  }
+}
+
+function readDelegateLayoutSummary(obj) {
+  return [
+    readPointerSlotSummary(obj, 0x0),
+    readPointerSlotSummary(obj, 0x8),
+    readPointerSlotSummary(obj, 0x10),
+    readPointerSlotSummary(obj, 0x18),
+    readPointerSlotSummary(obj, 0x20),
+    readPointerSlotSummary(obj, 0x28),
+  ].join(' ');
 }
 
 function logDivider(label) {
@@ -282,14 +477,133 @@ awaitLibil2cpp(() => {
     },
   });
 
+  hook('Task.WhenAll<TResult[]>(UserDataGet caller)', 0x38af1b4, {
+    onEnter(args) {
+      if (!isLikelyUserDataGetFlowCaller(this.returnAddress)) return;
+      this.shouldLog = true;
+      const tasks = args[0];
+      const count = readManagedArrayLength(tasks);
+      console.log(
+        `[UserDB] Task.WhenAll<TResult[]> caller=${moduleOffsetHex(this.returnAddress)} tasks=${pointerSummary(tasks)} count=${count} first0=${pointerSummary(readManagedArrayElementPointer(tasks, 0))} first1=${pointerSummary(readManagedArrayElementPointer(tasks, 1))}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[UserDB] Task.WhenAll<TResult[]> -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('TaskAwaiter<TResult>.GetResult(UserData pipeline)', 0x4743464, {
+    onEnter(args) {
+      if (!isLikelyUserDataPipelineCaller(this.returnAddress)) return;
+      this.shouldLog = true;
+      this.caller = moduleOffsetHex(this.returnAddress);
+      const task = readRawPointer(args[0], 0x0);
+      console.log(
+        `[UserDB] TaskAwaiter<TResult>.GetResult caller=${this.caller} awaiter=${args[0]} task=${pointerSummary(task)}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[UserDB] TaskAwaiter<TResult>.GetResult -> ${pointerSummary(retval)}`);
+      if (this.caller === '0x361b758') {
+        console.log(`[UserDB] TaskAwaiter<TResult>.GetResult names ${readStringListListSummary(retval)}`);
+      } else if (this.caller === '0x361b8ac') {
+        console.log(`[UserDB] TaskAwaiter<TResult>.GetResult whenAll ${readTuple2Array2DSummary(retval)}`);
+      } else if (this.caller === '0x3a45c7c') {
+        const userDataJson = readObjectPointer(retval, 0x0);
+        console.log(
+          `[UserDB] TaskAwaiter<TResult>.GetResult response userDataJson=${pointerSummary(userDataJson)} outer=${readListSize(userDataJson)}`,
+        );
+      }
+    },
+  });
+
+  hook('UnitySynchronizationContext2.Post(UserData flow)', 0x2e5caf4, {
+    onEnter(args) {
+      if (!isLikelyUserDataGetFlowCaller(this.returnAddress)) return;
+      const callback = args[1];
+      const state = args[2];
+      console.log(
+        `[UserDB] UnitySynchronizationContext2.Post caller=${moduleOffsetHex(this.returnAddress)} callback=${pointerSummary(callback)} state=${pointerSummary(state)}`,
+      );
+      if (callback && !callback.isNull()) {
+        console.log(`[UserDB] UnitySynchronizationContext2.Post callbackLayout ${readDelegateLayoutSummary(callback)}`);
+      }
+    },
+  });
+
   hook('CalculatorNetworking.GetUserDataGetDataSource', 0x2e1bd4c, {
     onEnter(args) {
       console.log(
         `[UserDB] GetUserDataGetDataSource onSuccess=${pointerSummary(args[0])} onError=${pointerSummary(args[1])}`,
       );
+      if (args[1] && !args[1].isNull()) {
+        console.log(`[UserDB] GetUserDataGetDataSource onErrorLayout ${readDelegateLayoutSummary(args[1])}`);
+      }
     },
     onLeave(retval) {
       console.log(`[UserDB] GetUserDataGetDataSource -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('CalculatorNetworking.DisposeUserDataGetDataSource', 0x2e1bdec, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] DisposeUserDataGetDataSource dataSource=${pointerSummary(args[0])} onSuccess=${pointerSummary(args[1])} onError=${pointerSummary(args[2])}`,
+      );
+    },
+  });
+
+  hook('UserDataGet.add_OnSuccess', 0x361aa10, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] add_OnSuccess self=${pointerSummary(args[0])} value=${pointerSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('UserDataGet.add_OnError', 0x361ab58, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] add_OnError self=${pointerSummary(args[0])} value=${pointerSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('UserDataGet.Initialize', 0x361aca0, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] Initialize self=${pointerSummary(args[0])} fetchTableHandler=${pointerSummary(args[1])} fetchRecordHandler=${pointerSummary(args[2])}`,
+      );
+    },
+  });
+
+  hook('UserDataGet.InitializeHandler', 0x361aca8, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] InitializeHandler self=${pointerSummary(args[0])} fetchTableHandler=${pointerSummary(args[1])} fetchRecordHandler=${pointerSummary(args[2])}`,
+      );
+    },
+  });
+
+  hook('UserDataGet.InitializeDefault', 0x361acb0, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(`[UserDB] InitializeDefault self=${pointerSummary(args[0])}`);
+    },
+    onLeave() {
+      const fetchTableHandler = readObjectPointer(this.self, 0x20);
+      const fetchRecordHandler = readObjectPointer(this.self, 0x28);
+      console.log(
+        `[UserDB] InitializeDefault completed self=${pointerSummary(this.self)} fetchTableHandler=${pointerSummary(fetchTableHandler)} fetchRecordHandler=${pointerSummary(fetchRecordHandler)}`,
+      );
+      if (fetchTableHandler && !fetchTableHandler.isNull()) {
+        console.log(`[UserDB] InitializeDefault fetchTableLayout ${readDelegateLayoutSummary(fetchTableHandler)}`);
+      }
+      if (fetchRecordHandler && !fetchRecordHandler.isNull()) {
+        console.log(`[UserDB] InitializeDefault fetchRecordLayout ${readDelegateLayoutSummary(fetchRecordHandler)}`);
+      }
     },
   });
 
@@ -308,6 +622,9 @@ awaitLibil2cpp(() => {
         `[UserDB] <RequestAsync>b__11_1 self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])}`,
       );
     },
+    onLeave() {
+      console.log('[UserDB] <RequestAsync>b__11_1 completed');
+    },
   });
 
   hook('UserDataGet.<RequestAsync>b__11_3', 0x361b318, {
@@ -316,11 +633,15 @@ awaitLibil2cpp(() => {
         `[UserDB] <RequestAsync>b__11_3 self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])}`,
       );
     },
+    onLeave() {
+      console.log('[UserDB] <RequestAsync>b__11_3 completed');
+    },
   });
 
   hook('UserDataGet.HandleError.Invoke', 0x361b328, {
     onEnter(args) {
       console.log(`[UserDB] HandleError.Invoke self=${pointerSummary(args[0])}`);
+      console.log(`[UserDB] HandleError.Invoke layout ${readDelegateLayoutSummary(args[0])}`);
     },
   });
 
@@ -344,6 +665,64 @@ awaitLibil2cpp(() => {
     onEnter(args) {
       console.log(
         `[UserDB] DarkServerAPI.HandleError.Invoke self=${pointerSummary(args[0])} error=${readClientErrorSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('Title.<AddDataSource>b__22_1', 0x31f9854, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] Title.<AddDataSource>b__22_1 self=${pointerSummary(args[0])} error=${readClientErrorSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('ReviewEnvironmentComposite.<AddDataSource>b__4_1', 0x3f7a3a4, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] ReviewEnvironmentComposite.<AddDataSource>b__4_1 self=${pointerSummary(args[0])} error=${readClientErrorSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('UserAuthComposite.<AddDataSource>b__4_1', 0x3f7a9f8, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] UserAuthComposite.<AddDataSource>b__4_1 self=${pointerSummary(args[0])} error=${readClientErrorSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('Title.<SyncUserData>b__0', 0x30bf130, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(
+        `[UserDB] Title.<SyncUserData>b__0 self=${pointerSummary(args[0])} isErrorBefore=${readObjectBool(args[0], 0x0)}`,
+      );
+    },
+    onLeave() {
+      console.log(
+        `[UserDB] Title.<SyncUserData>b__0 completed isErrorAfter=${readObjectBool(this.self, 0x0)}`,
+      );
+    },
+  });
+
+  hook('Title.<SyncUserData>d__7.MoveNext', 0x29334d0, {
+    onEnter(args) {
+      this.self = args[0];
+      const state = readRawInt32(args[0], 0x0);
+      const displayClass = readRawPointer(args[0], 0x20);
+      const isError = displayClass.isNull() ? null : readObjectBool(displayClass, 0x0);
+      console.log(
+        `[UserDB] Title.<SyncUserData>d__7.MoveNext self=${pointerSummary(args[0])} state=${state} displayClass=${pointerSummary(displayClass)} isError=${isError}`,
+      );
+    },
+    onLeave() {
+      const state = readRawInt32(this.self, 0x0);
+      const displayClass = readRawPointer(this.self, 0x20);
+      const isError = displayClass.isNull() ? null : readObjectBool(displayClass, 0x0);
+      console.log(
+        `[UserDB] Title.<SyncUserData>d__7.MoveNext completed self=${pointerSummary(this.self)} state=${state} displayClass=${pointerSummary(displayClass)} isError=${isError}`,
       );
     },
   });
@@ -391,15 +770,17 @@ awaitLibil2cpp(() => {
   hook('GetUserDataApi.<RequestAsyncMethod>d__1.MoveNext', 0x3a45adc, {
     onEnter(args) {
       this.self = args[0];
-      const state = readBoxedInt32(args[0], 0x0);
+      const state = readRawInt32(args[0], 0x0);
+      const tableNames = readRawPointer(args[0], 0x20);
       console.log(
-        `[UserAPI] <RequestAsyncMethod>d__1.MoveNext self=${pointerSummary(args[0])} state=${state}`,
+        `[UserAPI] <RequestAsyncMethod>d__1.MoveNext self=${pointerSummary(args[0])} state=${state} tableNames=${pointerSummary(tableNames)}`,
       );
     },
     onLeave() {
-      const state = readBoxedInt32(this.self, 0x0);
+      const state = readRawInt32(this.self, 0x0);
+      const tableNames = readRawPointer(this.self, 0x20);
       console.log(
-        `[UserAPI] <RequestAsyncMethod>d__1.MoveNext completed self=${pointerSummary(this.self)} state=${state}`,
+        `[UserAPI] <RequestAsyncMethod>d__1.MoveNext completed self=${pointerSummary(this.self)} state=${state} tableNames=${pointerSummary(tableNames)}`,
       );
     },
   });
@@ -407,15 +788,17 @@ awaitLibil2cpp(() => {
   hook('GetUserDataApi.<RequestAsyncMethod>d__0.MoveNext', 0x3a456b8, {
     onEnter(args) {
       this.self = args[0];
-      const state = readBoxedInt32(args[0], 0x0);
+      const state = readRawInt32(args[0], 0x0);
+      const tableName = readRawPointer(args[0], 0x20);
       console.log(
-        `[UserAPI] <RequestAsyncMethod>d__0.MoveNext self=${pointerSummary(args[0])} state=${state}`,
+        `[UserAPI] <RequestAsyncMethod>d__0.MoveNext self=${pointerSummary(args[0])} state=${state} tableName=${pointerSummary(tableName)}`,
       );
     },
     onLeave() {
-      const state = readBoxedInt32(this.self, 0x0);
+      const state = readRawInt32(this.self, 0x0);
+      const tableName = readRawPointer(this.self, 0x20);
       console.log(
-        `[UserAPI] <RequestAsyncMethod>d__0.MoveNext completed self=${pointerSummary(this.self)} state=${state}`,
+        `[UserAPI] <RequestAsyncMethod>d__0.MoveNext completed self=${pointerSummary(this.self)} state=${state} tableName=${pointerSummary(tableName)}`,
       );
     },
   });
@@ -423,19 +806,23 @@ awaitLibil2cpp(() => {
   hook('UserDataGet.<RequestAsync>d__11.MoveNext', 0x361b624, {
     onEnter(args) {
       this.self = args[0];
-      const state = readBoxedInt32(args[0], 0x0);
-      const displayClass = readBoxedPointer(args[0], 0x28);
-      const databaseBuilder = readBoxedPointer(args[0], 0x38);
+      const state = readRawInt32(args[0], 0x0);
+      const selfObj = readRawPointer(args[0], 0x20);
+      const displayClass = readRawPointer(args[0], 0x28);
+      const context = readRawPointer(args[0], 0x30);
+      const databaseBuilder = readRawPointer(args[0], 0x38);
       console.log(
-        `[UserDB] <RequestAsync>d__11.MoveNext self=${pointerSummary(args[0])} state=${state} displayClass=${pointerSummary(displayClass)} databaseBuilder=${pointerSummary(databaseBuilder)}`,
+        `[UserDB] <RequestAsync>d__11.MoveNext self=${pointerSummary(args[0])} state=${state} this=${pointerSummary(selfObj)} displayClass=${pointerSummary(displayClass)} context=${pointerSummary(context)} databaseBuilder=${pointerSummary(databaseBuilder)}`,
       );
     },
     onLeave() {
-      const state = readBoxedInt32(this.self, 0x0);
-      const displayClass = readBoxedPointer(this.self, 0x28);
-      const databaseBuilder = readBoxedPointer(this.self, 0x38);
+      const state = readRawInt32(this.self, 0x0);
+      const selfObj = readRawPointer(this.self, 0x20);
+      const displayClass = readRawPointer(this.self, 0x28);
+      const context = readRawPointer(this.self, 0x30);
+      const databaseBuilder = readRawPointer(this.self, 0x38);
       console.log(
-        `[UserDB] <RequestAsync>d__11.MoveNext completed self=${pointerSummary(this.self)} state=${state} displayClass=${pointerSummary(displayClass)} databaseBuilder=${pointerSummary(databaseBuilder)}`,
+        `[UserDB] <RequestAsync>d__11.MoveNext completed self=${pointerSummary(this.self)} state=${state} this=${pointerSummary(selfObj)} displayClass=${pointerSummary(displayClass)} context=${pointerSummary(context)} databaseBuilder=${pointerSummary(databaseBuilder)}`,
       );
     },
   });
