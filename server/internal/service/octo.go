@@ -98,12 +98,15 @@ func (s *OctoHTTPServer) Handler() http.Handler {
 }
 
 func (s *OctoHTTPServer) handleAll(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[HTTP] %s %s (Host: %s)", r.Method, r.URL.String(), r.Host)
-	for k, v := range r.Header {
-		log.Printf("[HTTP]   %s: %s", k, v)
-	}
-
 	path := r.URL.Path
+	isAssetRequest := strings.HasPrefix(path, "/resource-bundle-server/") || strings.Contains(path, "/unso-")
+	isMasterDataRequest := strings.Contains(path, "/assets/release/") && strings.Contains(path, "database.bin")
+	if !isAssetRequest && !isMasterDataRequest {
+		log.Printf("[HTTP] %s %s (Host: %s)", r.Method, r.URL.String(), r.Host)
+		for k, v := range r.Header {
+			log.Printf("[HTTP]   %s: %s", k, v)
+		}
+	}
 
 	// Octo v2 API — asset bundle management
 	if strings.HasPrefix(path, "/v2/") {
@@ -224,10 +227,6 @@ func (s *OctoHTTPServer) serveOctoV1List(w http.ResponseWriter, r *http.Request,
 
 // serveUnsoAsset serves asset bundle or resource for URLs like /resource-bundle-server/unso-{version}-{type}/{object_id}.
 func (s *OctoHTTPServer) serveUnsoAsset(w http.ResponseWriter, r *http.Request, path string) {
-	log.Printf("[HTTP] Asset request: %s %s (Host: %s)", r.Method, r.URL.String(), r.Host)
-	for k, v := range r.Header {
-		log.Printf("[HTTP]   %s: %v", k, v)
-	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	var segment, objectID string
 	for i, p := range parts {
@@ -266,7 +265,6 @@ func (s *OctoHTTPServer) serveUnsoAsset(w http.ResponseWriter, r *http.Request, 
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	log.Printf("[HTTP] Asset lookup: object_id=%s type=%s active_revision=%s list_revision=%s candidates=%d", objectID, assetType, resolution.ActiveRevision, resolution.ListRevision, len(resolution.Candidates))
 	baseDir := filepath.Join("assets", "revisions")
 	var triedPaths []string
 	var md5Mismatches []string
@@ -309,13 +307,9 @@ func (s *OctoHTTPServer) serveUnsoAsset(w http.ResponseWriter, r *http.Request, 
 			}
 		}
 		defer f.Close()
-		diskPath, _ := filepath.Abs(candidate.Path)
-		log.Printf("[HTTP] Serving asset: %s -> %s (%d bytes, active_revision=%s list_revision=%s resolved_revision=%s source=%s expected_md5=%s)", path, candidate.Path, info.Size(), resolution.ActiveRevision, resolution.ListRevision, candidate.Revision, candidate.Source, candidate.ExpectedMD5)
-		log.Printf("[HTTP] Resource path (disk): %s", diskPath)
 		w.Header().Set("Content-Type", "application/octet-stream")
 		cw := &countResponseWriter{ResponseWriter: w}
 		http.ServeContent(cw, r, filepath.Base(candidate.Path), info.ModTime(), f)
-		log.Printf("[HTTP] Transferred asset: %s (%d bytes)", path, cw.n)
 		return
 	}
 	if len(md5Mismatches) > 0 {
@@ -371,7 +365,6 @@ func (s *OctoHTTPServer) serveDatabaseBinE(w http.ResponseWriter, r *http.Reques
 			filePath = vPath
 		}
 	}
-	log.Printf("[WebAPI] Serving master data: %s (method=%s)", filePath, r.Method)
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeFile(w, r, filePath)
 }

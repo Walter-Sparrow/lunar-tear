@@ -89,8 +89,17 @@ type EntityIUserMainQuestProgressStatus struct {
 	UserId              int64    // Key(0)
 	CurrentQuestSceneId int32    // Key(1)
 	HeadQuestSceneId    int32    // Key(2)
-	QuestFlowType       int32    // Key(3) // 1 = MAIN_FLOW
+	CurrentQuestFlowType int32   // Key(3) // 1 = MAIN_FLOW
 	LatestVersion       int64    // Key(4)
+}
+
+// EntityIUserMainQuestSeasonRoute mirrors EntityIUserMainQuestSeasonRoute [Key(0..3)].
+type EntityIUserMainQuestSeasonRoute struct {
+	_msgpack           struct{} `msgpack:",asArray"`
+	UserId             int64    // Key(0)
+	MainQuestSeasonId  int32    // Key(1)
+	MainQuestRouteId   int32    // Key(2)
+	LatestVersion      int64    // Key(3)
 }
 
 // EncodeRecords serializes a slice of entities to the client-expected format:
@@ -107,6 +116,14 @@ func EncodeRecords(entities ...any) (string, error) {
 	jsonBytes, err := json.Marshal(b64List)
 	if err != nil {
 		return "", fmt.Errorf("json marshal: %w", err)
+	}
+	return string(jsonBytes), nil
+}
+
+func encodeJSONRecords(entities ...any) (string, error) {
+	jsonBytes, err := json.Marshal(entities)
+	if err != nil {
+		return "", fmt.Errorf("json marshal records: %w", err)
 	}
 	return string(jsonBytes), nil
 }
@@ -140,15 +157,54 @@ func DefaultUserData(userID int64) map[string]string {
 // Verified: client accepts JSON format and parses it correctly.
 func DefaultUserDataJSON(userID int64) map[string]string {
 	now := time.Now().Unix()
+	userJSON, _ := encodeJSONRecords(&EntityIUser{
+		UserId:              userID,
+		PlayerId:            userID,
+		OsType:              2,
+		PlatformType:        2,
+		UserRestrictionType: 0,
+		RegisterDatetime:    now,
+		GameStartDatetime:   0,
+		LatestVersion:       0,
+	})
+	userSettingJSON, _ := encodeJSONRecords(&EntityIUserSetting{
+		UserId:                userID,
+		IsNotifyPurchaseAlert: false,
+		LatestVersion:         0,
+	})
+	mainQuestFlowJSON, _ := encodeJSONRecords(&EntityIUserMainQuestFlowStatus{
+		UserId:               userID,
+		CurrentQuestFlowType: 1,
+		LatestVersion:        0,
+	})
+	mainQuestMainFlowJSON, _ := encodeJSONRecords(&EntityIUserMainQuestMainFlowStatus{
+		UserId:                  userID,
+		CurrentMainQuestRouteId: 1,
+		CurrentQuestSceneId:     1,
+		HeadQuestSceneId:        1,
+		IsReachedLastQuestScene: false,
+		LatestVersion:           0,
+	})
+	mainQuestProgressJSON, _ := encodeJSONRecords(&EntityIUserMainQuestProgressStatus{
+		UserId:               userID,
+		CurrentQuestSceneId:  1,
+		HeadQuestSceneId:     1,
+		CurrentQuestFlowType: 1,
+		LatestVersion:        0,
+	})
+	mainQuestSeasonRouteJSON, _ := encodeJSONRecords(&EntityIUserMainQuestSeasonRoute{
+		UserId:            userID,
+		MainQuestSeasonId: 1,
+		MainQuestRouteId:  1,
+		LatestVersion:     0,
+	})
+
 	return map[string]string{
-		// OsType 2=Android, PlatformType 2=GooglePlay (see nier-rein-apps PlatformType.cs, SetCommonHeaderInterceptor)
-		"user": fmt.Sprintf(`[{"UserId":%d,"PlayerId":%d,"OsType":2,"PlatformType":2,"UserRestrictionType":0,"RegisterDatetime":%d,"GameStartDatetime":0,"LatestVersion":0}]`,
-			userID, userID, now),
-		"user_setting": fmt.Sprintf(`[{"UserId":%d,"IsNotifyPurchaseAlert":false,"LatestVersion":0}]`, userID),
-		// Main quest tables — sceneId=1 (try earlier scene; master has scene 2 as first in QuestSceneTable)
-		"user_main_quest_flow_status":      fmt.Sprintf(`[{"UserId":%d,"CurrentQuestFlowType":1,"LatestVersion":0}]`, userID),
-		"user_main_quest_main_flow_status": fmt.Sprintf(`[{"UserId":%d,"CurrentMainQuestRouteId":1,"CurrentQuestSceneId":1,"HeadQuestSceneId":1,"IsReachedLastQuestScene":false,"LatestVersion":0}]`, userID),
-		"user_main_quest_progress_status":  fmt.Sprintf(`[{"UserId":%d,"CurrentQuestSceneId":1,"HeadQuestSceneId":1,"CurrentQuestFlowType":1,"LatestVersion":0}]`, userID),
-		"user_main_quest_season_route":     fmt.Sprintf(`[{"UserId":%d,"MainQuestSeasonId":1,"MainQuestRouteId":1,"LatestVersion":0}]`, userID),
+		"user":                        userJSON,
+		"user_setting":                userSettingJSON,
+		"user_main_quest_flow_status": mainQuestFlowJSON,
+		"user_main_quest_main_flow_status": mainQuestMainFlowJSON,
+		"user_main_quest_progress_status":  mainQuestProgressJSON,
+		"user_main_quest_season_route":     mainQuestSeasonRouteJSON,
 	}
 }

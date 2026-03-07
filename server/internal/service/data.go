@@ -56,6 +56,9 @@ func (s *DataServiceServer) GetUserData(ctx context.Context, req *pb.UserDataGet
 	for _, table := range req.TableName {
 		if data, ok := defaults[table]; ok && data != "" {
 			log.Printf("[DataService]   %s -> (len=%d)", table, len(data))
+			if table == "IUser" {
+				log.Printf("[DataService]   %s payload=%s", table, data)
+			}
 			result[table] = data
 		} else {
 			// Important: keep the key present with an empty JSON array.

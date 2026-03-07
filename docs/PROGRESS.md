@@ -1,3 +1,9 @@
+# Deprecated Progress File
+
+Use `docs/PROGRESS.active.md` for the current trustworthy project state.
+
+This older file is kept for historical context only and includes assumptions from earlier heavy-hook debugging that should not be treated as current truth.
+
 # Lunar Tear — Private Server for NieR Re[in]carnation
 
 ## Goal

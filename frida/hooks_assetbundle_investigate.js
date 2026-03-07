@@ -104,6 +104,18 @@ function readNamedErrorSummary(err) {
   }
 }
 
+function readAssetBundleDataSummary(data) {
+  try {
+    if (!data || data.isNull()) return '<null>';
+    const item = data.add(0x10).readPointer();
+    const refCount = data.add(0x18).readS32();
+    const bundle = data.add(0x20).readPointer();
+    return `item={${readItemSummary(item)}} refCount=${refCount} bundle=${pointerSummary(bundle)}`;
+  } catch (e) {
+    return `<assetbundledata-err ${e}>`;
+  }
+}
+
 function logDivider(label) {
   console.log(`\n==== ${label} ====`);
 }
@@ -202,6 +214,15 @@ awaitLibil2cpp(() => {
     },
   });
 
+  hook('OctoAssetBundleLoader.LoadFromFileAsync', 0x4c2962c, {
+    onEnter(args) {
+      this.assetBundleName = readManagedString(args[1]);
+      console.log(
+        `[OctoAB] LoadFromFileAsync name=${this.assetBundleName} onComplete=${args[2]}`,
+      );
+    },
+  });
+
   // Error callback for LoadFromCacheOrDownload.
   hook('OctoAssetBundleLoader.<LoadFromCacheOrDownload>b__0', 0x4c296dc, {
     onEnter(args) {
@@ -234,6 +255,16 @@ awaitLibil2cpp(() => {
     },
   });
 
+  hook('AssetBundle.LoadFromFileAsync', 0x5401384, {
+    onEnter(args) {
+      this.path = readManagedString(args[0]);
+      console.log(`[UnityAB] LoadFromFileAsync path=${this.path}`);
+    },
+    onLeave(retval) {
+      console.log(`[UnityAB] LoadFromFileAsync -> ${pointerSummary(retval)}`);
+    },
+  });
+
   hook('AssetBundle.LoadFromMemoryAsync_Internal', 0x54013cc, {
     onEnter(args) {
       this.binary = args[0];
@@ -257,6 +288,49 @@ awaitLibil2cpp(() => {
     },
     onLeave(retval) {
       console.log(`[UnityAB] LoadAssetAsync -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('AssetBundleCreateRequest.get_assetBundle', 0x54019ec, {
+    onEnter(args) {
+      console.log(`[UnityAB] AssetBundleCreateRequest.get_assetBundle req=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      console.log(`[UnityAB] AssetBundleCreateRequest.get_assetBundle -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('Unity.AsyncOperation.get_isDone', 0x334428, {
+    onEnter(args) {
+      this.op = args[0];
+      const klass = safeKlassName(this.op);
+      if (klass === 'AssetBundleCreateRequest' || klass === 'AssetBundleRequest') {
+        this.shouldLog = true;
+        console.log(`[UnityAB] AsyncOperation.get_isDone op=${pointerSummary(this.op)}`);
+      }
+    },
+    onLeave(retval) {
+      if (this.shouldLog) {
+        console.log(`[UnityAB] AsyncOperation.get_isDone -> ${retval.toInt32()}`);
+      }
+    },
+  });
+
+  hook('AssetBundleOperator.ctor', 0x3d915e8, {
+    onEnter(args) {
+      console.log(
+        `[ABOp] ctor self=${pointerSummary(args[0])} data=${pointerSummary(args[1])}`,
+      );
+      console.log(`[ABOp]   ${readAssetBundleDataSummary(args[1])}`);
+    },
+  });
+
+  hook('AssetBundleOperator.get_Name', 0x3d91cd4, {
+    onEnter(args) {
+      console.log(`[ABOp] get_Name self=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      console.log(`[ABOp] get_Name -> ${readManagedString(retval)}`);
     },
   });
 
