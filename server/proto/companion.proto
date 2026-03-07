@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Companion";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.companion;
+
+service CompanionService {
+	rpc Enhance (EnhanceRequest) returns (EnhanceResponse);
+}
+
+message EnhanceRequest {
+	string userCompanionUuid = 1;
+	int32 addLevelCount = 2;
+}
+
+message EnhanceResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

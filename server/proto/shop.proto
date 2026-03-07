@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Shop";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+
+package apb.api.shop;
+
+service ShopService {
+	rpc Buy (BuyRequest) returns (BuyResponse);
+	rpc RefreshUserData (RefreshRequest) returns (RefreshResponse);
+	rpc GetCesaLimit (google.protobuf.Empty) returns (GetCesaLimitResponse);
+	rpc CreatePurchaseTransaction (CreatePurchaseTransactionRequest) returns (CreatePurchaseTransactionResponse);
+	rpc PurchaseGooglePlayStoreProduct (PurchaseGooglePlayStoreProductRequest) returns (PurchaseGooglePlayStoreProductResponse);
+}
+
+message BuyRequest {
+	int32 shopId = 1;
+	map<int32, int32> shopItems = 2;
+}
+
+message BuyResponse {
+	repeated Possession overflowPossession = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message Possession {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+}
+
+message RefreshRequest {
+	bool isGemUsed = 1;
+}
+
+message RefreshResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetCesaLimitResponse {
+	repeated CesaLimit cesaLimit = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message CesaLimit {
+	int32 age = 1;
+	int32 limit = 2;
+}
+
+message CreatePurchaseTransactionRequest {
+	int32 shopId = 1;
+	int32 shopItemId = 2;
+	string productId = 3;
+	string amazonUserId = 4;
+}
+
+message CreatePurchaseTransactionResponse {
+	string purchaseTransactionId = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message PurchaseGooglePlayStoreProductRequest {
+	string purchaseTransactionId = 1;
+	string purchaseData = 2;
+	string dataSignature = 3;
+}
+
+message PurchaseGooglePlayStoreProductResponse {
+	repeated Possession overflowPossession = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

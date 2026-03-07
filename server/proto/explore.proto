@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Explore";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.explore;
+
+service ExploreService {
+	rpc StartExplore (StartExploreRequest) returns (StartExploreResponse);
+	rpc FinishExplore (FinishExploreRequest) returns (FinishExploreResponse);
+	rpc RetireExplore (RetireExploreRequest) returns (RetireExploreResponse);
+}
+
+message StartExploreRequest {
+	int32 exploreId = 1;
+	int32 useConsumableItemId = 2;
+}
+
+message StartExploreResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message FinishExploreRequest {
+	int32 exploreId = 1;
+	int32 score = 2;
+	string vt = 200;
+}
+
+message FinishExploreResponse {
+	int32 acquireStaminaCount = 1;
+	repeated ExploreReward exploreReward = 2;
+	int32 assetGradeIconId = 3;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ExploreReward {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+}
+
+message RetireExploreRequest {
+	int32 exploreId = 1;
+}
+
+message RetireExploreResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

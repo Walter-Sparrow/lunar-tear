@@ -5,6 +5,8 @@ import (
 	"log"
 
 	pb "lunar-tear/server/gen/proto"
+	"lunar-tear/server/internal/mock"
+
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -22,6 +24,6 @@ func (s *NotificationServiceServer) GetHeaderNotification(ctx context.Context, r
 		GiftNotReceiveCount:        0,
 		FriendRequestReceiveCount:  0,
 		IsExistUnreadInformation:   false,
-		DiffUserData:               map[string]*pb.DiffData{},
+		DiffUserData:               mock.EmptyDiff(),
 	}, nil
 }

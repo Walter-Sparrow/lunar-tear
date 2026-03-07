@@ -1,0 +1,263 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.User";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+import "google/protobuf/timestamp.proto";
+
+package apb.api.user;
+
+service UserService {
+	rpc RegisterUser (RegisterUserRequest) returns (RegisterUserResponse);
+	rpc TransferUser (TransferUserRequest) returns (TransferUserResponse);
+	rpc Auth (AuthUserRequest) returns (AuthUserResponse);
+	rpc GameStart (google.protobuf.Empty) returns (GameStartResponse);
+	rpc SetUserName (SetUserNameRequest) returns (SetUserNameResponse);
+	rpc SetUserMessage (SetUserMessageRequest) returns (SetUserMessageResponse);
+	rpc SetUserFavoriteCostumeId (SetUserFavoriteCostumeIdRequest) returns (SetUserFavoriteCostumeIdResponse);
+	rpc GetUserProfile (GetUserProfileRequest) returns (GetUserProfileResponse);
+	rpc SetBirthYearMonth (SetBirthYearMonthRequest) returns (SetBirthYearMonthResponse);
+	rpc GetBirthYearMonth (google.protobuf.Empty) returns (GetBirthYearMonthResponse);
+	rpc GetChargeMoney (google.protobuf.Empty) returns (GetChargeMoneyResponse);
+	rpc SetUserSetting (SetUserSettingRequest) returns (SetUserSettingResponse);
+	rpc GetAndroidArgs (GetAndroidArgsRequest) returns (GetAndroidArgsResponse);
+	rpc GetBackupToken (GetBackupTokenRequest) returns (GetBackupTokenResponse);
+	rpc CheckTransferSetting (google.protobuf.Empty) returns (CheckTransferSettingResponse);
+	rpc SetFacebookAccount (SetFacebookAccountRequest) returns (SetFacebookAccountResponse);
+	rpc UnsetFacebookAccount (google.protobuf.Empty) returns (UnsetFacebookAccountResponse);
+	rpc SetAppleAccount (SetAppleAccountRequest) returns (SetAppleAccountResponse);
+	rpc TransferUserByFacebook (TransferUserByFacebookRequest) returns (TransferUserByFacebookResponse);
+	rpc TransferUserByApple (TransferUserByAppleRequest) returns (TransferUserByAppleResponse);
+	rpc GetUserGamePlayNote (GetUserGamePlayNoteRequest) returns (GetUserGamePlayNoteResponse);
+}
+
+message RegisterUserRequest {
+	string uuid = 1;
+	string terminalId = 2;
+	string registerSignature = 3;
+}
+
+message RegisterUserResponse {
+	int64 userId = 1;
+	string signature = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message TransferUserRequest {
+	string uuid = 1;
+}
+
+message TransferUserResponse {
+	int64 userId = 1;
+	string signature = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message AuthUserRequest {
+	string uuid = 1;
+	string signature = 2;
+	string advertisingId = 3;
+	bool isTrackingEnabled = 4;
+	UserDeviceInherent deviceInherent = 5;
+	string tr = 6;
+}
+
+message UserDeviceInherent {
+	string identifierForVendor = 1;
+	string deviceToken = 2;
+	string macAddress = 3;
+	string registrationId = 4;
+}
+
+message AuthUserResponse {
+	string sessionKey = 1;
+	google.protobuf.Timestamp expireDatetime = 2;
+	string signature = 3;
+	int64 userId = 4;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GameStartResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SetUserNameRequest {
+	string name = 1;
+}
+
+message SetUserNameResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SetUserMessageRequest {
+	string message = 1;
+}
+
+message SetUserMessageResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SetUserFavoriteCostumeIdRequest {
+	int32 favoriteCostumeId = 1;
+}
+
+message SetUserFavoriteCostumeIdResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetUserProfileRequest {
+	int64 playerId = 1;
+}
+
+message GetUserProfileResponse {
+	int32 level = 1;
+	string name = 2;
+	int32 favoriteCostumeId = 3;
+	string message = 4;
+	bool isFriend = 5;
+	ProfileDeck latestUsedDeck = 6;
+	ProfilePvpInfo pvpInfo = 7;
+	GamePlayHistory gamePlayHistory = 8;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ProfileDeck {
+	int32 power = 1;
+	repeated ProfileDeckCharacter deckCharacter = 2;
+}
+
+message ProfileDeckCharacter {
+	int32 costumeId = 1;
+	int32 mainWeaponId = 2;
+	int32 mainWeaponLevel = 3;
+}
+
+message ProfilePvpInfo {
+	int32 currentRank = 1;
+	int32 currentGradeId = 2;
+	int32 maxSeasonRank = 3;
+}
+
+message GamePlayHistory {
+	repeated PlayHistoryItem historyItem = 1;
+	repeated PlayHistoryCategoryGraphItem historyCategoryGraphItem = 2;
+}
+
+message PlayHistoryItem {
+	int32 historyItemId = 1;
+	int64 count = 2;
+}
+
+message PlayHistoryCategoryGraphItem {
+	int32 categoryTypeId = 1;
+	int32 progressPermil = 2;
+}
+
+message SetBirthYearMonthRequest {
+	int32 birthYear = 1;
+	int32 birthMonth = 2;
+}
+
+message SetBirthYearMonthResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetBirthYearMonthResponse {
+	int32 birthYear = 1;
+	int32 birthMonth = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetChargeMoneyResponse {
+	int64 chargeMoneyThisMonth = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SetUserSettingRequest {
+	bool isNotifyPurchaseAlert = 1;
+}
+
+message SetUserSettingResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetAndroidArgsRequest {
+	string uuid = 1;
+	string signature = 2;
+	UserDeviceInherent deviceInherent = 3;
+	string packageName = 4;
+}
+
+message GetAndroidArgsResponse {
+	string nonce = 1;
+	string apiKey = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetBackupTokenRequest {
+	string uuid = 1;
+}
+
+message GetBackupTokenResponse {
+	string backupToken = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message CheckTransferSettingResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SetFacebookAccountRequest {
+	string token = 1;
+}
+
+message SetFacebookAccountResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UnsetFacebookAccountResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SetAppleAccountRequest {
+	string token = 1;
+}
+
+message SetAppleAccountResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message TransferUserByFacebookRequest {
+	string token = 1;
+	string uuid = 2;
+	string terminalId = 3;
+}
+
+message TransferUserByFacebookResponse {
+	int64 userId = 1;
+	string signature = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message TransferUserByAppleRequest {
+	string token = 1;
+	string uuid = 2;
+	string terminalId = 3;
+}
+
+message TransferUserByAppleResponse {
+	int64 userId = 1;
+	string signature = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetUserGamePlayNoteRequest {
+	int32 gamePlayHistoryTypeId = 1;
+}
+
+message GetUserGamePlayNoteResponse {
+	int32 progressValue = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

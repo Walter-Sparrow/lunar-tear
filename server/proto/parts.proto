@@ -1,0 +1,109 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Parts";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.parts;
+
+service PartsService {
+	rpc Sell (SellRequest) returns (SellResponse);
+	rpc Protect (ProtectRequest) returns (ProtectResponse);
+	rpc Unprotect (UnprotectRequest) returns (UnprotectResponse);
+	rpc Enhance (EnhanceRequest) returns (EnhanceResponse);
+	rpc UpdatePresetName (UpdatePresetNameRequest) returns (UpdatePresetNameResponse);
+	rpc UpdatePresetTagNumber (UpdatePresetTagNumberRequest) returns (UpdatePresetTagNumberResponse);
+	rpc UpdatePresetTagName (UpdatePresetTagNameRequest) returns (UpdatePresetTagNameResponse);
+	rpc ReplacePreset (ReplacePresetRequest) returns (ReplacePresetResponse);
+	rpc CopyPreset (CopyPresetRequest) returns (CopyPresetResponse);
+	rpc RemovePreset (RemovePresetRequest) returns (RemovePresetResponse);
+}
+
+message SellRequest {
+	repeated string userPartsUuid = 1;
+}
+
+message SellResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ProtectRequest {
+	repeated string userPartsUuid = 1;
+}
+
+message ProtectResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UnprotectRequest {
+	repeated string userPartsUuid = 1;
+}
+
+message UnprotectResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message EnhanceRequest {
+	string userPartsUuid = 1;
+}
+
+message EnhanceResponse {
+	bool isSuccess = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UpdatePresetNameRequest {
+	int32 userPartsPresetNumber = 1;
+	string name = 2;
+}
+
+message UpdatePresetNameResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UpdatePresetTagNumberRequest {
+	int32 userPartsPresetNumber = 1;
+	int32 userPartsPresetTagNumber = 2;
+}
+
+message UpdatePresetTagNumberResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UpdatePresetTagNameRequest {
+	int32 userPartsPresetTagNumber = 1;
+	string name = 2;
+}
+
+message UpdatePresetTagNameResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReplacePresetRequest {
+	int32 userPartsPresetNumber = 1;
+	string userPartsUuid01 = 2;
+	string userPartsUuid02 = 3;
+	string userPartsUuid03 = 4;
+}
+
+message ReplacePresetResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message CopyPresetRequest {
+	int32 fromUserPartsPresetNumber = 1;
+	int32 toUserPartsPresetNumber = 2;
+}
+
+message CopyPresetResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message RemovePresetRequest {
+	int32 userPartsPresetNumber = 1;
+}
+
+message RemovePresetResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

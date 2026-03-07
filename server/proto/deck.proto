@@ -1,0 +1,159 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Deck";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.deck;
+
+service DeckService {
+	rpc UpdateName (UpdateNameRequest) returns (UpdateNameResponse);
+	rpc ReplaceDeck (ReplaceDeckRequest) returns (ReplaceDeckResponse);
+	rpc SetPvpDefenseDeck (SetPvpDefenseDeckRequest) returns (SetPvpDefenseDeckResponse);
+	rpc CopyDeck (CopyDeckRequest) returns (CopyDeckResponse);
+	rpc RemoveDeck (RemoveDeckRequest) returns (RemoveDeckResponse);
+	rpc RefreshDeckPower (RefreshDeckPowerRequest) returns (RefreshDeckPowerResponse);
+	rpc UpdateTripleDeckName (UpdateTripleDeckNameRequest) returns (UpdateTripleDeckNameResponse);
+	rpc ReplaceTripleDeck (ReplaceTripleDeckRequest) returns (ReplaceTripleDeckResponse);
+	rpc ReplaceMultiDeck (ReplaceMultiDeckRequest) returns (ReplaceMultiDeckResponse);
+	rpc RefreshMultiDeckPower (RefreshMultiDeckPowerRequest) returns (RefreshMultiDeckPowerResponse);
+}
+
+message Deck {
+	DeckCharacter character01 = 1;
+	DeckCharacter character02 = 2;
+	DeckCharacter character03 = 3;
+}
+
+message DeckCharacter {
+	string userCostumeUuid = 1;
+	string mainUserWeaponUuid = 2;
+	repeated string subUserWeaponUuid = 3;
+	string userCompanionUuid = 4;
+	repeated string userPartsUuid = 5;
+	int32 dressupCostumeId = 6;
+	string userThoughtUuid = 7;
+}
+
+message UpdateNameRequest {
+	int32 deckType = 1;
+	int32 userDeckNumber = 2;
+	string name = 3;
+}
+
+message UpdateNameResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReplaceDeckRequest {
+	int32 deckType = 1;
+	int32 userDeckNumber = 2;
+	Deck deck = 3;
+}
+
+message ReplaceDeckResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SetPvpDefenseDeckRequest {
+	int32 userDeckNumber = 1;
+	DeckPower deckPower = 2;
+}
+
+message DeckPower {
+	int32 power = 1;
+	DeckCharacterPower deckCharacterPower01 = 2;
+	DeckCharacterPower deckCharacterPower02 = 3;
+	DeckCharacterPower deckCharacterPower03 = 4;
+}
+
+message DeckCharacterPower {
+	string userDeckCharacterUuid = 1;
+	int32 power = 2;
+}
+
+message SetPvpDefenseDeckResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message CopyDeckRequest {
+	int32 fromDeckType = 1;
+	int32 fromUserDeckNumber = 2;
+	int32 toDeckType = 3;
+	int32 toUserDeckNumber = 4;
+}
+
+message CopyDeckResponse {
+	int32 resultType = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message RemoveDeckRequest {
+	int32 deckType = 1;
+	int32 userDeckNumber = 2;
+}
+
+message RemoveDeckResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message RefreshDeckPowerRequest {
+	int32 deckType = 1;
+	int32 userDeckNumber = 2;
+	DeckPower deckPower = 3;
+}
+
+message RefreshDeckPowerResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UpdateTripleDeckNameRequest {
+	int32 deckType = 1;
+	int32 userDeckNumber = 2;
+	string name = 3;
+}
+
+message UpdateTripleDeckNameResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReplaceTripleDeckRequest {
+	int32 deckType = 1;
+	int32 userDeckNumber = 2;
+	DeckDetail deckDetail01 = 3;
+	DeckDetail deckDetail02 = 4;
+	DeckDetail deckDetail03 = 5;
+}
+
+message DeckDetail {
+	int32 deckType = 1;
+	int32 userDeckNumber = 2;
+	Deck deck = 3;
+}
+
+message ReplaceTripleDeckResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReplaceMultiDeckRequest {
+	repeated DeckDetail deckDetail = 1;
+}
+
+message ReplaceMultiDeckResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message RefreshMultiDeckPowerRequest {
+	repeated DeckPowerInfo deckPowerInfo = 1;
+}
+
+message DeckPowerInfo {
+	int32 deckType = 1;
+	int32 userDeckNumber = 2;
+	DeckPower deckPower = 3;
+}
+
+message RefreshMultiDeckPowerResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

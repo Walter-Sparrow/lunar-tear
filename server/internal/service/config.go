@@ -5,6 +5,7 @@ import (
 	"log"
 
 	pb "lunar-tear/server/gen/proto"
+	"lunar-tear/server/internal/mock"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -40,6 +41,6 @@ func (s *ConfigServiceServer) GetReviewServerConfig(ctx context.Context, _ *empt
 		MasterData: &pb.MasterDataConfig{
 			UrlFormat: "http://localhost:8080/master-data/%s",
 		},
-		DiffUserData: map[string]*pb.DiffData{},
+		DiffUserData: mock.EmptyDiff(),
 	}, nil
 }

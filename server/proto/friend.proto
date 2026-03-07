@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Friend";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+import "google/protobuf/timestamp.proto";
+import "proto/mission.proto";
+
+package apb.api.friend;
+
+service FriendService {
+	rpc GetUser (GetUserRequest) returns (GetUserResponse);
+	rpc SearchRecommendedUsers (google.protobuf.Empty) returns (SearchRecommendedUsersResponse);
+	rpc GetFriendList (GetFriendListRequest) returns (GetFriendListResponse);
+	rpc GetFriendRequestList (google.protobuf.Empty) returns (GetFriendRequestListResponse);
+	rpc SendFriendRequest (SendFriendRequestRequest) returns (SendFriendRequestResponse);
+	rpc AcceptFriendRequest (AcceptFriendRequestRequest) returns (AcceptFriendRequestResponse);
+	rpc DeclineFriendRequest (DeclineFriendRequestRequest) returns (DeclineFriendRequestResponse);
+	rpc DeleteFriend (DeleteFriendRequest) returns (DeleteFriendResponse);
+	rpc CheerFriend (CheerFriendRequest) returns (CheerFriendResponse);
+	rpc BulkCheerFriend (google.protobuf.Empty) returns (BulkCheerFriendResponse);
+	rpc ReceiveCheer (ReceiveCheerRequest) returns (ReceiveCheerResponse);
+	rpc BulkReceiveCheer (google.protobuf.Empty) returns (BulkReceiveCheerResponse);
+}
+
+message GetUserRequest {
+	int64 playerId = 1;
+}
+
+message GetUserResponse {
+	User user = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message User {
+	int64 playerId = 1;
+	string userName = 2;
+	google.protobuf.Timestamp lastLoginDatetime = 3;
+	int32 maxDeckPower = 4;
+	int32 favoriteCostumeId = 5;
+	int32 level = 6;
+}
+
+message SearchRecommendedUsersResponse {
+	repeated User users = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetFriendListRequest {
+	apb.api.mission.CageMeasurableValues cageMeasurableValues = 50;
+}
+
+message GetFriendListResponse {
+	repeated FriendUser friendUser = 1;
+	int32 sendCheerCount = 2;
+	int32 receivedCheerCount = 3;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message FriendUser {
+	int64 playerId = 1;
+	string userName = 2;
+	google.protobuf.Timestamp lastLoginDatetime = 3;
+	int32 maxDeckPower = 4;
+	int32 favoriteCostumeId = 5;
+	int32 level = 6;
+	bool cheerReceived = 7;
+	bool cheerSent = 8;
+	bool staminaReceived = 9;
+}
+
+message GetFriendRequestListResponse {
+	repeated User user = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SendFriendRequestRequest {
+	int64 playerId = 1;
+}
+
+message SendFriendRequestResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message AcceptFriendRequestRequest {
+	int64 playerId = 1;
+}
+
+message AcceptFriendRequestResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message DeclineFriendRequestRequest {
+	int64 playerIdOld = 1;
+	repeated int64 playerId = 2;
+}
+
+message DeclineFriendRequestResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message DeleteFriendRequest {
+	int64 playerId = 1;
+}
+
+message DeleteFriendResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message CheerFriendRequest {
+	int64 playerId = 1;
+}
+
+message CheerFriendResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message BulkCheerFriendResponse {
+	repeated int64 playerId = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReceiveCheerRequest {
+	int64 playerId = 1;
+}
+
+message ReceiveCheerResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message BulkReceiveCheerResponse {
+	repeated int64 playerId = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

@@ -32,10 +32,10 @@ type EntityIUser struct {
 
 // EntityIUserSetting mirrors EntityIUserSetting [Key(0..2)].
 type EntityIUserSetting struct {
-	_msgpack             struct{} `msgpack:",asArray"`
-	UserId               int64    // Key(0)
-	IsNotifyPurchaseAlert bool    // Key(1)
-	LatestVersion        int64    // Key(2)
+	_msgpack              struct{} `msgpack:",asArray"`
+	UserId                int64    // Key(0)
+	IsNotifyPurchaseAlert bool     // Key(1)
+	LatestVersion         int64    // Key(2)
 }
 
 // EntityIUserTutorialProgress mirrors EntityIUserTutorialProgress [Key(0..4)].
@@ -50,17 +50,17 @@ type EntityIUserTutorialProgress struct {
 
 // EntityIUserQuest mirrors EntityIUserQuest [Key(0..9)].
 type EntityIUserQuest struct {
-	_msgpack             struct{} `msgpack:",asArray"`
-	UserId               int64    // Key(0)
-	QuestId              int32    // Key(1)
-	QuestStateType       int32    // Key(2) — 3 = Cleared
-	IsBattleOnly         bool     // Key(3)
-	LatestStartDatetime  int64    // Key(4) — unix millis
-	ClearCount           int32    // Key(5)
-	DailyClearCount      int32    // Key(6)
-	LastClearDatetime    int64    // Key(7) — unix millis
-	ShortestClearFrames  int32    // Key(8)
-	LatestVersion        int64    // Key(9)
+	_msgpack            struct{} `msgpack:",asArray"`
+	UserId              int64    // Key(0)
+	QuestId             int32    // Key(1)
+	QuestStateType      int32    // Key(2) — 3 = Cleared
+	IsBattleOnly        bool     // Key(3)
+	LatestStartDatetime int64    // Key(4) — unix millis
+	ClearCount          int32    // Key(5)
+	DailyClearCount     int32    // Key(6)
+	LastClearDatetime   int64    // Key(7) — unix millis
+	ShortestClearFrames int32    // Key(8)
+	LatestVersion       int64    // Key(9)
 }
 
 // EntityIUserMainQuestFlowStatus mirrors EntityIUserMainQuestFlowStatus [Key(0..2)].
@@ -141,13 +141,14 @@ func DefaultUserData(userID int64) map[string]string {
 func DefaultUserDataJSON(userID int64) map[string]string {
 	now := time.Now().Unix()
 	return map[string]string{
+		// OsType 2=Android, PlatformType 2=GooglePlay (see nier-rein-apps PlatformType.cs, SetCommonHeaderInterceptor)
 		"user": fmt.Sprintf(`[{"UserId":%d,"PlayerId":%d,"OsType":2,"PlatformType":2,"UserRestrictionType":0,"RegisterDatetime":%d,"GameStartDatetime":0,"LatestVersion":0}]`,
 			userID, userID, now),
 		"user_setting": fmt.Sprintf(`[{"UserId":%d,"IsNotifyPurchaseAlert":false,"LatestVersion":0}]`, userID),
-		// Main quest tables - CRITICAL: sceneId=2 to match ActivateMainStoryWithSceneId(sceneId=2)
+		// Main quest tables — sceneId=1 (try earlier scene; master has scene 2 as first in QuestSceneTable)
 		"user_main_quest_flow_status":      fmt.Sprintf(`[{"UserId":%d,"CurrentQuestFlowType":1,"LatestVersion":0}]`, userID),
-		"user_main_quest_main_flow_status": fmt.Sprintf(`[{"UserId":%d,"CurrentMainQuestRouteId":1,"CurrentQuestSceneId":2,"HeadQuestSceneId":2,"IsReachedLastQuestScene":false,"LatestVersion":0}]`, userID),
-		"user_main_quest_progress_status":  fmt.Sprintf(`[{"UserId":%d,"CurrentQuestSceneId":2,"HeadQuestSceneId":2,"QuestFlowType":1,"LatestVersion":0}]`, userID),
-		"user_main_quest_season_route":   fmt.Sprintf(`[{"UserId":%d,"MainQuestSeasonId":1,"MainQuestRouteId":1,"LatestVersion":0}]`, userID),
+		"user_main_quest_main_flow_status": fmt.Sprintf(`[{"UserId":%d,"CurrentMainQuestRouteId":1,"CurrentQuestSceneId":1,"HeadQuestSceneId":1,"IsReachedLastQuestScene":false,"LatestVersion":0}]`, userID),
+		"user_main_quest_progress_status":  fmt.Sprintf(`[{"UserId":%d,"CurrentQuestSceneId":1,"HeadQuestSceneId":1,"CurrentQuestFlowType":1,"LatestVersion":0}]`, userID),
+		"user_main_quest_season_route":     fmt.Sprintf(`[{"UserId":%d,"MainQuestSeasonId":1,"MainQuestRouteId":1,"LatestVersion":0}]`, userID),
 	}
 }

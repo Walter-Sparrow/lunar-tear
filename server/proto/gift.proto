@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Gift";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+import "google/protobuf/timestamp.proto";
+
+package apb.api.gift;
+
+service GiftService {
+	rpc ReceiveGift (ReceiveGiftRequest) returns (ReceiveGiftResponse);
+	rpc GetGiftList (GetGiftListRequest) returns (GetGiftListResponse);
+	rpc GetGiftReceiveHistoryList (google.protobuf.Empty) returns (GetGiftReceiveHistoryListResponse);
+}
+
+message ReceiveGiftRequest {
+	repeated string userGiftUuid = 1;
+}
+
+message ReceiveGiftResponse {
+	repeated string receivedGiftUuid = 1;
+	repeated string expiredGiftUuid = 2;
+	repeated string overflowGiftUuid = 3;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetGiftListRequest {
+	repeated int32 rewardKindType = 1;
+	int32 expirationType = 2;
+	bool isAscendingSort = 3;
+	int64 nextCursor = 4;
+	int64 previousCursor = 5;
+	int32 getCount = 6;
+}
+
+message GetGiftListResponse {
+	repeated NotReceivedGift gift = 1;
+	int32 totalPageCount = 2;
+	int64 nextCursor = 3;
+	int64 previousCursor = 4;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message NotReceivedGift {
+	GiftCommon giftCommon = 1;
+	google.protobuf.Timestamp expirationDatetime = 2;
+	string userGiftUuid = 3;
+}
+
+message GiftCommon {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+	google.protobuf.Timestamp grantDatetime = 4;
+	int32 descriptionGiftTextId = 5;
+	bytes equipmentData = 6;
+}
+
+message GetGiftReceiveHistoryListResponse {
+	repeated ReceivedGift gift = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReceivedGift {
+	GiftCommon giftCommon = 1;
+	google.protobuf.Timestamp receivedDatetime = 2;
+}

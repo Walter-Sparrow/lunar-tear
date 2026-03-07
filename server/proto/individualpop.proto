@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.IndividualPop";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+
+package apb.api.individualpop;
+
+service IndividualpopService {
+	rpc GetUnreadPop (google.protobuf.Empty) returns (GetUnreadPopResponse);
+}
+
+message GetUnreadPopResponse {
+	repeated string unreadPop = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

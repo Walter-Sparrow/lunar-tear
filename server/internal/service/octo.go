@@ -3,35 +3,12 @@ package service
 import (
 	"log"
 	"net/http"
+	"os"
 	"strings"
 )
 
-const termsOfServiceHTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Terms of Service</title></head>
-<body>
-<h1>Terms of Service</h1>
-<p>Welcome to NieR Re[in]carnation. By using this application you agree to the following terms.</p>
-<p>1. You agree to use this service for personal, non-commercial purposes.</p>
-<p>2. All content, including characters, stories, and music, is the property of SQUARE ENIX.</p>
-<p>3. You agree not to modify, reverse engineer, or redistribute any part of this application.</p>
-<p>4. This service is provided as-is without warranty of any kind.</p>
-<p>Last updated: 2024-04-01</p>
-</body>
-</html>`
-
-const privacyPolicyHTML = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Privacy Policy</title></head>
-<body>
-<h1>Privacy Policy</h1>
-<p>This privacy policy describes how your personal information is collected and used.</p>
-<p>1. We collect device identifiers for account management.</p>
-<p>2. Game progress is stored on our servers.</p>
-<p>3. We do not share your personal information with third parties.</p>
-<p>Last updated: 2024-04-01</p>
-</body>
-</html>`
+const termsOfServiceHTML = `<html><head><title>Terms of Service</title></head><body>###1###</body></html>`
+const privacyPolicyHTML = `<html><head><title>Privacy Policy</title></head><body>###2###</body></html>`
 
 type OctoHTTPServer struct {
 	mux *http.ServeMux
@@ -61,6 +38,12 @@ func (s *OctoHTTPServer) handleAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Octo v1 list: /v1/list/{version}/{revision} — same list.bin as v2, keyed by revision
+	if strings.HasPrefix(path, "/v1/list/") {
+		s.serveOctoV1List(w, r, path)
+		return
+	}
+
 	// Game web API requests
 	if strings.Contains(path, "/web/") || strings.Contains(r.Host, "web.app.nierreincarnation") {
 		s.handleWebAPI(w, r, path)
@@ -73,6 +56,12 @@ func (s *OctoHTTPServer) handleAll(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Length", "0")
 		w.WriteHeader(200)
+		return
+	}
+
+	// /assets/release/{version}/database.bin.e — master data (HEAD/GET), same as MariesWonderland
+	if strings.Contains(path, "/assets/release/") && strings.Contains(path, "database.bin") {
+		s.serveDatabaseBinE(w, r, path)
 		return
 	}
 
@@ -98,11 +87,22 @@ func (s *OctoHTTPServer) handleOctoV2(w http.ResponseWriter, r *http.Request, pa
 	log.Printf("[OctoV2] %s %s", r.Method, path)
 
 	// /v2/pub/a/{appId}/v/{version}/list/{offset} — resource listing
-	// Return empty protobuf = "no resources to download, you're up to date"
 	if strings.Contains(path, "/list/") {
-		log.Printf("[OctoV2] Resource list request — returning empty list (up to date)")
+		parts := strings.Split(path, "/")
+		if len(parts) > 0 {
+			revision := parts[len(parts)-1]
+			if revision != "" {
+				filePath := "assets/revisions/" + revision + "/list.bin"
+				log.Printf("[OctoV2] Resource list request — serving %s (revision=%s)", filePath, revision)
+				w.Header().Set("Content-Type", "application/x-protobuf")
+				http.ServeFile(w, r, filePath)
+				return
+			}
+		}
+
+		log.Printf("[OctoV2] Resource list request without revision segment — returning empty protobuf")
 		w.Header().Set("Content-Type", "application/x-protobuf")
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
@@ -119,29 +119,58 @@ func (s *OctoHTTPServer) handleOctoV2(w http.ResponseWriter, r *http.Request, pa
 	w.WriteHeader(200)
 }
 
+// serveOctoV1List handles GET /v1/list/{version}/{revision} — serves assets/revisions/{revision}/list.bin.
+func (s *OctoHTTPServer) serveOctoV1List(w http.ResponseWriter, r *http.Request, path string) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	// ["v1", "list", "300116832", "0"] -> revision = last segment
+	revision := "0"
+	if len(parts) >= 4 {
+		revision = parts[len(parts)-1]
+	}
+	filePath := "assets/revisions/" + revision + "/list.bin"
+	if _, err := os.Stat(filePath); err != nil {
+		log.Printf("[OctoV1] list not found: %s, falling back to revision 0", filePath)
+		filePath = "assets/revisions/0/list.bin"
+	}
+	log.Printf("[OctoV1] %s %s — serving %s", r.Method, path, filePath)
+	w.Header().Set("Content-Type", "application/x-protobuf")
+	http.ServeFile(w, r, filePath)
+}
+
+// serveDatabaseBinE serves MasterMemory database: /assets/release/{version}/database.bin.e
+// -> assets/release/{version}.bin.e (or assets/release/database.bin.e fallback).
+func (s *OctoHTTPServer) serveDatabaseBinE(w http.ResponseWriter, r *http.Request, path string) {
+	parts := strings.Split(path, "/")
+	var version string
+	for i, p := range parts {
+		if p == "release" && i+1 < len(parts) {
+			version = parts[i+1]
+			break
+		}
+	}
+	filePath := "assets/release/database.bin.e"
+	if version != "" {
+		vPath := "assets/release/" + version + ".bin.e"
+		if _, err := os.Stat(vPath); err == nil {
+			filePath = vPath
+		}
+	}
+	log.Printf("[WebAPI] Serving master data: %s (method=%s)", filePath, r.Method)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeFile(w, r, filePath)
+}
+
 func (s *OctoHTTPServer) handleWebAPI(w http.ResponseWriter, r *http.Request, path string) {
 	log.Printf("[WebAPI] Serving: %s", path)
 
 	if strings.Contains(path, "database.bin") {
-		// Path format: /assets/release/{version}/database.bin.e
-		// Try to extract version from path and serve the matching file
-		parts := strings.Split(path, "/")
-		for i, p := range parts {
-			if p == "release" && i+1 < len(parts) {
-				version := parts[i+1]
-				filePath := "assets/" + version + ".bin.e"
-				log.Printf("[WebAPI] Serving master data: %s (method=%s)", filePath, r.Method)
-				http.ServeFile(w, r, filePath)
-				return
-			}
-		}
-		log.Printf("[WebAPI] Serving database.bin.e fallback (method=%s)", r.Method)
-		http.ServeFile(w, r, "assets/database.bin.e")
+		s.serveDatabaseBinE(w, r, path)
 		return
 	}
 
-	if strings.Contains(path, "terms") {
+	if strings.Contains(path, "termsofuse") {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(200)
 		w.Write([]byte(termsOfServiceHTML))
 		return

@@ -5,12 +5,11 @@ import (
 	"log"
 
 	pb "lunar-tear/server/gen/proto"
+	"lunar-tear/server/internal/mock"
 	"lunar-tear/server/internal/userdata"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 )
-
-const defaultUserID int64 = 1001
 
 type DataServiceServer struct {
 	pb.UnimplementedDataServiceServer
@@ -27,13 +26,6 @@ func (s *DataServiceServer) GetLatestMasterDataVersion(ctx context.Context, _ *e
 	}, nil
 }
 
-func (s *DataServiceServer) GetUserDataName(ctx context.Context, _ *emptypb.Empty) (*pb.UserDataGetNameResponse, error) {
-	log.Printf("[DataService] GetUserDataName")
-	return &pb.UserDataGetNameResponse{
-		TableName: defaultTableNames(),
-	}, nil
-}
-
 func (s *DataServiceServer) GetUserDataNameV2(ctx context.Context, _ *emptypb.Empty) (*pb.UserDataGetNameResponseV2, error) {
 	log.Printf("[DataService] GetUserDataNameV2")
 	return &pb.UserDataGetNameResponseV2{
@@ -45,17 +37,30 @@ func (s *DataServiceServer) GetUserDataNameV2(ctx context.Context, _ *emptypb.Em
 
 func (s *DataServiceServer) GetUserData(ctx context.Context, req *pb.UserDataGetRequest) (*pb.UserDataGetResponse, error) {
 	log.Printf("[DataService] GetUserData: tables=%v", req.TableName)
-	log.Printf("[DataService] Available tables: user_main_quest_main_flow_status, user_main_quest_flow_status, etc.")
 
-	defaults := userdata.DefaultUserDataJSON(defaultUserID)
+	// The game expects table keys like "IUser", not snake_case filenames.
+	// We keep our internal defaults in snake_case and map them to IUser* keys.
+	defaultsSnake := userdata.DefaultUserDataJSON(mock.DefaultUserID)
+	defaults := map[string]string{
+		"IUser":                     defaultsSnake["user"],
+		"IUserSetting":              defaultsSnake["user_setting"],
+		"IUserMainQuestFlowStatus":  defaultsSnake["user_main_quest_flow_status"],
+		"IUserMainQuestMainFlowStatus": defaultsSnake["user_main_quest_main_flow_status"],
+		"IUserMainQuestProgressStatus": defaultsSnake["user_main_quest_progress_status"],
+		"IUserMainQuestSeasonRoute": defaultsSnake["user_main_quest_season_route"],
+		// Optional / usually empty for fresh user
+		"IUserQuest": "[]",
+	}
 	result := make(map[string]string)
 
 	for _, table := range req.TableName {
-		if data, ok := defaults[table]; ok {
-			log.Printf("[DataService]   %s -> %s (len=%d)", table, data, len(data))
+		if data, ok := defaults[table]; ok && data != "" {
+			log.Printf("[DataService]   %s -> (len=%d)", table, len(data))
 			result[table] = data
 		} else {
-			log.Printf("[DataService]   %s -> [] (empty, not in defaults)", table)
+			// Important: keep the key present with an empty JSON array.
+			// Client deserializes each value as List<object>.
+			log.Printf("[DataService]   %s -> []", table)
 			result[table] = "[]"
 		}
 	}
@@ -67,30 +72,113 @@ func (s *DataServiceServer) GetUserData(ctx context.Context, req *pb.UserDataGet
 
 func defaultTableNames() []string {
 	return []string{
-		"user",
-		"user_quest",
-		"user_main_quest_flow_status",
-		"user_main_quest_main_flow_status",
-		"user_main_quest_progress_status",
-		"user_main_quest_season_route",
-		"user_weapon",
-		"user_costume",
-		"user_companion",
-		"user_parts",
-		"user_deck",
-		"user_gacha",
-		"user_material",
-		"user_consumable_item",
-		"user_mission",
-		"user_gift",
-		"user_login_bonus",
-		"user_tutorial",
-		"user_explore",
-		"user_shop",
-		"user_setting",
-		"user_character",
-		"user_character_board",
-		"user_pvp",
-		"user_big_hunt",
+		// Extracted from nier-rein-apps DarkUserDataDatabaseBuilderAppendHelper
+		// (parsers/appenders/differs keys). The client should only request these keys.
+		"IUser",
+		"IUserApple",
+		"IUserAutoSaleSettingDetail",
+		"IUserBeginnerCampaign",
+		"IUserBigHuntMaxScore",
+		"IUserBigHuntProgressStatus",
+		"IUserBigHuntScheduleMaxScore",
+		"IUserBigHuntStatus",
+		"IUserBigHuntWeeklyMaxScore",
+		"IUserBigHuntWeeklyStatus",
+		"IUserCageOrnamentReward",
+		"IUserCharacter",
+		"IUserCharacterBoard",
+		"IUserCharacterBoardAbility",
+		"IUserCharacterBoardCompleteReward",
+		"IUserCharacterBoardStatusUp",
+		"IUserCharacterCostumeLevelBonus",
+		"IUserCharacterRebirth",
+		"IUserCharacterViewerField",
+		"IUserComebackCampaign",
+		"IUserCompanion",
+		"IUserConsumableItem",
+		"IUserContentsStory",
+		"IUserCostume",
+		"IUserCostumeActiveSkill",
+		"IUserCostumeAwakenStatusUp",
+		"IUserCostumeLevelBonusReleaseStatus",
+		"IUserCostumeLotteryEffect",
+		"IUserCostumeLotteryEffectAbility",
+		"IUserCostumeLotteryEffectPending",
+		"IUserCostumeLotteryEffectStatusUp",
+		"IUserDeck",
+		"IUserDeckCharacter",
+		"IUserDeckCharacterDressupCostume",
+		"IUserDeckLimitContentRestricted",
+		"IUserDeckPartsGroup",
+		"IUserDeckSubWeaponGroup",
+		"IUserDeckTypeNote",
+		"IUserDokan",
+		"IUserEventQuestDailyGroupCompleteReward",
+		"IUserEventQuestGuerrillaFreeOpen",
+		"IUserEventQuestLabyrinthSeason",
+		"IUserEventQuestLabyrinthStage",
+		"IUserEventQuestProgressStatus",
+		"IUserEventQuestTowerAccumulationReward",
+		"IUserExplore",
+		"IUserExploreScore",
+		"IUserExtraQuestProgressStatus",
+		"IUserFacebook",
+		"IUserGem",
+		"IUserGimmick",
+		"IUserGimmickOrnamentProgress",
+		"IUserGimmickSequence",
+		"IUserGimmickUnlock",
+		"IUserImportantItem",
+		"IUserLimitedOpen",
+		"IUserLogin",
+		"IUserLoginBonus",
+		"IUserMainQuestFlowStatus",
+		"IUserMainQuestMainFlowStatus",
+		"IUserMainQuestProgressStatus",
+		"IUserMainQuestReplayFlowStatus",
+		"IUserMainQuestSeasonRoute",
+		"IUserMaterial",
+		"IUserMission",
+		"IUserMissionCompletionProgress",
+		"IUserMissionPassPoint",
+		"IUserMovie",
+		"IUserNaviCutIn",
+		"IUserOmikuji",
+		"IUserParts",
+		"IUserPartsGroupNote",
+		"IUserPartsPreset",
+		"IUserPartsPresetTag",
+		"IUserPartsStatusSub",
+		"IUserPortalCageStatus",
+		"IUserPossessionAutoConvert",
+		"IUserPremiumItem",
+		"IUserProfile",
+		"IUserPvpDefenseDeck",
+		"IUserPvpStatus",
+		"IUserPvpWeeklyResult",
+		"IUserQuest",
+		"IUserQuestAutoOrbit",
+		"IUserQuestLimitContentStatus",
+		"IUserQuestMission",
+		"IUserQuestReplayFlowRewardGroup",
+		"IUserQuestSceneChoice",
+		"IUserQuestSceneChoiceHistory",
+		"IUserSetting",
+		"IUserShopItem",
+		"IUserShopReplaceable",
+		"IUserShopReplaceableLineup",
+		"IUserSideStoryQuest",
+		"IUserSideStoryQuestSceneProgressStatus",
+		"IUserStatus",
+		"IUserThought",
+		"IUserTripleDeck",
+		"IUserTutorialProgress",
+		"IUserWeapon",
+		"IUserWeaponAbility",
+		"IUserWeaponAwaken",
+		"IUserWeaponNote",
+		"IUserWeaponSkill",
+		"IUserWeaponStory",
+		"IUserWebviewPanelMission",
 	}
 }

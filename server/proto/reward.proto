@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Reward";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/pvp.proto";
+import "proto/data.proto";
+import "proto/bighunt.proto";
+import "proto/labyrinth.proto";
+
+package apb.api.reward;
+
+service RewardService {
+	rpc ReceivePvpReward (google.protobuf.Empty) returns (ReceivePvpRewardResponse);
+	rpc ReceiveBigHuntReward (google.protobuf.Empty) returns (ReceiveBigHuntRewardResponse);
+	rpc ReceiveLabyrinthSeasonReward (google.protobuf.Empty) returns (ReceiveLabyrinthSeasonRewardResponse);
+	rpc ReceiveMissionPassRemainingReward (google.protobuf.Empty) returns (ReceiveMissionPassRemainingRewardResponse);
+}
+
+message ReceivePvpRewardResponse {
+	apb.api.pvp.WeeklyGradeResult weeklyGradeResult = 1;
+	apb.api.pvp.SeasonRankResult seasonRankResult = 2;
+	apb.api.pvp.WeeklyRankResult weeklyRankResult = 3;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReceiveBigHuntRewardResponse {
+	repeated apb.api.bighunt.WeeklyScoreResult weeklyScoreResult = 1;
+	repeated apb.api.bighunt.BigHuntReward weeklyScoreReward = 2;
+	bool isReceivedWeeklyScoreReward = 3;
+	repeated apb.api.bighunt.BigHuntReward lastWeekWeeklyScoreReward = 4;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReceiveLabyrinthSeasonRewardResponse {
+	repeated apb.api.labyrinth.LabyrinthSeasonResult seasonResult = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReceiveMissionPassRemainingRewardResponse {
+	int32 rewardReceivedMissionPassId = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

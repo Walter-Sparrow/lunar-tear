@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.CharacterViewer";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+
+package apb.api.characterviewer;
+
+service CharacterviewerService {
+	rpc CharacterViewerTop (google.protobuf.Empty) returns (CharacterViewerTopResponse);
+}
+
+message CharacterViewerTopResponse {
+	repeated int32 releaseCharacterViewerFieldId = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

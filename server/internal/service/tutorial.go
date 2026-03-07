@@ -5,6 +5,7 @@ import (
 	"log"
 
 	pb "lunar-tear/server/gen/proto"
+	"lunar-tear/server/internal/mock"
 )
 
 type TutorialServiceServer struct {
@@ -18,13 +19,13 @@ func NewTutorialServiceServer() *TutorialServiceServer {
 func (s *TutorialServiceServer) SetTutorialProgress(ctx context.Context, req *pb.SetTutorialProgressRequest) (*pb.SetTutorialProgressResponse, error) {
 	log.Printf("[TutorialService] SetTutorialProgress: type=%d phase=%d choice=%d", req.TutorialType, req.ProgressPhase, req.ChoiceId)
 	return &pb.SetTutorialProgressResponse{
-		DiffUserData: map[string]*pb.DiffData{},
+		DiffUserData: mock.EmptyDiff(),
 	}, nil
 }
 
 func (s *TutorialServiceServer) SetTutorialProgressAndReplaceDeck(ctx context.Context, req *pb.SetTutorialProgressAndReplaceDeckRequest) (*pb.SetTutorialProgressAndReplaceDeckResponse, error) {
-	log.Printf("[TutorialService] SetTutorialProgressAndReplaceDeck: type=%d phase=%d choice=%d", req.TutorialType, req.ProgressPhase, req.ChoiceId)
+	log.Printf("[TutorialService] SetTutorialProgressAndReplaceDeck: type=%d phase=%d deckType=%d", req.TutorialType, req.ProgressPhase, req.DeckType)
 	return &pb.SetTutorialProgressAndReplaceDeckResponse{
-		DiffUserData: map[string]*pb.DiffData{},
+		DiffUserData: mock.EmptyDiff(),
 	}, nil
 }

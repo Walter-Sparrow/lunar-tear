@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.LoginBonus";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+
+package apb.api.loginbonus;
+
+service LoginbonusService {
+	rpc ReceiveStamp (google.protobuf.Empty) returns (ReceiveStampResponse);
+}
+
+message ReceiveStampResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

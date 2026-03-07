@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.ContentsStory";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.contentsstory;
+
+service ContentsstoryService {
+	rpc RegisterPlayed (RegisterPlayedRequest) returns (RegisterPlayedResponse);
+}
+
+message RegisterPlayedRequest {
+	int32 contentsStoryId = 1;
+}
+
+message RegisterPlayedResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

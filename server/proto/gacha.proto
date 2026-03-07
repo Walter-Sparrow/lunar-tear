@@ -1,0 +1,175 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Gacha";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "proto/data.proto";
+
+package apb.api.gacha;
+
+service GachaService {
+	rpc GetGachaList (GetGachaListRequest) returns (GetGachaListResponse);
+	rpc GetGacha (GetGachaRequest) returns (GetGachaResponse);
+	rpc Draw (DrawRequest) returns (DrawResponse);
+	rpc ResetBoxGacha (ResetBoxGachaRequest) returns (ResetBoxGachaResponse);
+	rpc GetRewardGacha (google.protobuf.Empty) returns (GetRewardGachaResponse);
+	rpc RewardDraw (RewardDrawRequest) returns (RewardDrawResponse);
+}
+
+message MenuGachaBadgeInfo {
+	google.protobuf.Timestamp displayStartDatetime = 1;
+	google.protobuf.Timestamp displayEndDatetime = 2;
+}
+
+message GetGachaListRequest {
+	repeated int32 gachaLabelType = 1;
+}
+
+message GetGachaListResponse {
+	repeated Gacha gacha = 1;
+	ConvertedGachaMedal convertedGachaMedal = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message Gacha {
+	int32 gachaId = 1;
+	int32 gachaLabelType = 2;
+	int32 gachaModeType = 4;
+	int32 gachaAutoResetType = 5;
+	int32 gachaAutoResetPeriod = 6;
+	google.protobuf.Timestamp nextAutoResetDatetime = 7;
+	repeated GachaUnlockCondition gachaUnlockCondition = 8;
+	bool isUserGachaUnlock = 9;
+	google.protobuf.Timestamp startDatetime = 10;
+	google.protobuf.Timestamp endDatetime = 13;
+	repeated GachaPricePhase gachaPricePhase = 14;
+	int32 relatedMainQuestChapterId = 16;
+	int32 relatedEventQuestChapterId = 17;
+	int32 promotionMovieAssetId = 18;
+	int32 gachaMedalId = 19;
+	int32 gachaDecorationType = 20;
+	int32 sortOrder = 21;
+	bool isInactive = 22;
+	int32 informationId = 23;
+	bytes gachaMode = 24;
+}
+
+message GachaUnlockCondition {
+	int32 gachaUnlockConditionType = 1;
+	int32 conditionValue = 2;
+}
+
+message GachaPricePhase {
+	int32 gachaPricePhaseId = 1;
+	bool isEnabled = 2;
+	google.protobuf.Timestamp endDatetime = 3;
+	int32 limitExecCount = 4;
+	int32 userExecCount = 5;
+	int32 gachaBadgeType = 6;
+	int32 priceType = 7;
+	int32 priceId = 8;
+	int32 price = 9;
+	int32 regularPrice = 10;
+	int32 drawCount = 11;
+	int32 eachMaxExecCount = 12;
+	repeated GachaBonus gachaBonus = 13;
+	GachaOddsFixedRarity gachaOddsFixedRarity = 14;
+}
+
+message GachaBonus {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+}
+
+message GachaOddsFixedRarity {
+	int32 fixedRarityTypeLowerLimit = 1;
+	int32 fixedCount = 2;
+}
+
+message ConvertedGachaMedal {
+	repeated ConsumableItemPossession convertedMedalPossession = 1;
+	ConsumableItemPossession obtainPossession = 2;
+}
+
+message ConsumableItemPossession {
+	int32 consumableItemId = 1;
+	int32 count = 2;
+}
+
+message GetGachaRequest {
+	repeated int32 gachaId = 1;
+}
+
+message GetGachaResponse {
+	map<int32, Gacha> gacha = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message DrawRequest {
+	int32 gachaId = 1;
+	int32 gachaPricePhaseId = 2;
+	int32 execCount = 3;
+	string consumeUserWeaponUuid = 4;
+}
+
+message DrawResponse {
+	Gacha nextGacha = 1;
+	repeated DrawGachaOddsItem gachaResult = 2;
+	repeated GachaBonus gachaBonus = 3;
+	repeated MenuGachaBadgeInfo menuGachaBadgeInfo = 4;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message DrawGachaOddsItem {
+	GachaItem gachaItem = 1;
+	GachaItem gachaItemBonus = 2;
+	int32 duplicationBonusGrade = 3;
+	repeated GachaBonus duplicationBonus = 4;
+	GachaBonus medalBonus = 5;
+	bool isTarget = 6;
+}
+
+message GachaItem {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+	int32 promotionOrder = 4;
+	bool isNew = 5;
+}
+
+message ResetBoxGachaRequest {
+	int32 gachaId = 1;
+}
+
+message ResetBoxGachaResponse {
+	Gacha gacha = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetRewardGachaResponse {
+	bool available = 1;
+	int32 todaysCurrentDrawCount = 2;
+	int32 dailyMaxCount = 3;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message RewardDrawRequest {
+	string placementName = 1;
+	string rewardName = 2;
+	string rewardAmount = 3;
+}
+
+message RewardDrawResponse {
+	repeated RewardGachaItem rewardGachaResult = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message RewardGachaItem {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+	bool isNew = 4;
+}

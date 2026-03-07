@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Gimmick";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+
+package apb.api.gimmick;
+
+service GimmickService {
+	rpc UpdateSequence (UpdateSequenceRequest) returns (UpdateSequenceResponse);
+	rpc UpdateGimmickProgress (UpdateGimmickProgressRequest) returns (UpdateGimmickProgressResponse);
+	rpc InitSequenceSchedule (google.protobuf.Empty) returns (InitSequenceScheduleResponse);
+	rpc Unlock (UnlockRequest) returns (UnlockResponse);
+}
+
+message UpdateSequenceRequest {
+	int32 gimmickSequenceScheduleId = 1;
+	int32 gimmickSequenceId = 2;
+}
+
+message UpdateSequenceResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UpdateGimmickProgressRequest {
+	int32 gimmickSequenceScheduleId = 1;
+	int32 gimmickSequenceId = 2;
+	int32 gimmickId = 3;
+	int32 gimmickOrnamentIndex = 4;
+	int32 progressValueBit = 5;
+	int32 flowType = 6;
+}
+
+message UpdateGimmickProgressResponse {
+	repeated GimmickReward gimmickOrnamentReward = 1;
+	bool isSequenceCleared = 2;
+	repeated GimmickReward gimmickSequenceClearReward = 3;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GimmickReward {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+}
+
+message InitSequenceScheduleResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UnlockRequest {
+	repeated GimmickKey gimmickKey = 1;
+}
+
+message GimmickKey {
+	int32 gimmickSequenceScheduleId = 1;
+	int32 gimmickSequenceId = 2;
+	int32 gimmickId = 3;
+}
+
+message UnlockResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

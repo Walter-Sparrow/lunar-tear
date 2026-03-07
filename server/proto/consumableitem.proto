@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.ConsumableItem";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.consumableitem;
+
+service ConsumableitemService {
+	rpc UseEffectItem (UseEffectItemRequest) returns (UseEffectItemResponse);
+	rpc Sell (SellRequest) returns (SellResponse);
+}
+
+message UseEffectItemRequest {
+	int32 consumableItemId = 1;
+	int32 count = 2;
+}
+
+message UseEffectItemResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SellRequest {
+	repeated SellPossession consumableItemPossession = 1;
+}
+
+message SellPossession {
+	int32 consumableItemId = 1;
+	int32 count = 2;
+}
+
+message SellResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

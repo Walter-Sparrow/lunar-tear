@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Mission";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.mission;
+
+service MissionService {
+	rpc ReceiveMissionRewardsById (ReceiveMissionRewardsByIdRequest) returns (ReceiveMissionRewardsResponse);
+	rpc UpdateMissionProgress (UpdateMissionProgressRequest) returns (UpdateMissionProgressResponse);
+	rpc ReceiveMissionPassRewards (ReceiveMissionPassRewardsRequest) returns (ReceiveMissionPassRewardsResponse);
+}
+
+message CageMeasurableValues {
+	int32 runningDistanceMeters = 1;
+	int32 mamaTappedCount = 2;
+}
+
+message ReceiveMissionRewardsByIdRequest {
+	repeated int32 missionId = 1;
+}
+
+message ReceiveMissionRewardsResponse {
+	repeated MissionReward receivedPossession = 1;
+	repeated MissionReward expiredPossession = 2;
+	repeated MissionReward overflowPossession = 3;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message MissionReward {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+}
+
+message UpdateMissionProgressRequest {
+	CageMeasurableValues cageMeasurableValues = 50;
+	PictureBookMeasurableValues pictureBookMeasurableValues = 51;
+}
+
+message PictureBookMeasurableValues {
+	int32 defeatWizardCount = 1;
+	RhythmInteractionMeasurableValues rhythmInteractionMeasurableValues = 2;
+}
+
+message RhythmInteractionMeasurableValues {
+	int32 liveTypeId = 1;
+	int32 tapCount = 2;
+}
+
+message UpdateMissionProgressResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReceiveMissionPassRewardsRequest {
+	int32 missionPassId = 1;
+}
+
+message ReceiveMissionPassRewardsResponse {
+	repeated MissionPassReward receivedPossession = 1;
+	repeated MissionPassReward overflowPossession = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message MissionPassReward {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+}

@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Movie";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.movie;
+
+service MovieService {
+	rpc SaveViewedMovie (SaveViewedMovieRequest) returns (SaveViewedMovieResponse);
+}
+
+message SaveViewedMovieRequest {
+	repeated int32 movieId = 1;
+}
+
+message SaveViewedMovieResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

@@ -1,0 +1,110 @@
+{
+  "Title$$OnFirstStep": {
+    "Address": 51109468,
+    "Name": "Dark.StateMachine.Title.Title$$OnFirstStep",
+    "Signature": "UniRx_Async_UniTask_o Dark_StateMachine_Title_Title__OnFirstStep (Dark_StateMachine_Title_Title_o* __this, Adam_Framework_Core_Station_ITransactionUserData_o* userdata, System_Threading_CancellationToken_o cancellationToken, const MethodInfo* method);",
+    "TypeSignature": "iiiii"
+  },
+  "Title$$OnPreTitle": {
+    "Address": 51109880,
+    "Name": "Dark.StateMachine.Title.Title$$OnPreTitle",
+    "Signature": "UniRx_Async_UniTask_o Dark_StateMachine_Title_Title__OnPreTitle (Dark_StateMachine_Title_Title_o* __this, Adam_Framework_Core_Station_ITransactionUserData_o* userdata, System_Threading_CancellationToken_o cancellationToken, const MethodInfo* method);",
+    "TypeSignature": "iiiii"
+  },
+  "Title$$OnTitleScreen": {
+    "Address": 51111400,
+    "Name": "Dark.StateMachine.Title.Title$$OnTitleScreen",
+    "Signature": "UniRx_Async_UniTask_o Dark_StateMachine_Title_Title__OnTitleScreen (Dark_StateMachine_Title_Title_o* __this, Adam_Framework_Core_Station_ITransactionUserData_o* userdata, System_Threading_CancellationToken_o cancellationToken, const MethodInfo* method);",
+    "TypeSignature": "iiiii"
+  },
+  "Title$$OnApplicationVersion": {
+    "Address": 51108364,
+    "Name": "Dark.StateMachine.Title.Title$$OnApplicationVersion",
+    "Signature": "UniRx_Async_UniTask_o Dark_StateMachine_Title_Title__OnApplicationVersion (Dark_StateMachine_Title_Title_o* __this, Adam_Framework_Core_Station_ITransactionUserData_o* userdata, System_Threading_CancellationToken_o cancellationToken, const MethodInfo* method);",
+    "TypeSignature": "iiiii"
+  },
+  "Title$$OnBanAccount": {
+    "Address": 51108520,
+    "Name": "Dark.StateMachine.Title.Title$$OnBanAccount",
+    "Signature": "UniRx_Async_UniTask_o Dark_StateMachine_Title_Title__OnBanAccount (Dark_StateMachine_Title_Title_o* __this, Adam_Framework_Core_Station_ITransactionUserData_o* userdata, System_Threading_CancellationToken_o cancellationToken, const MethodInfo* method);",
+    "TypeSignature": "iiiii"
+  },
+  "Title$$OnTermOfService": {
+    "Address": 51110628,
+    "Name": "Dark.StateMachine.Title.Title$$OnTermOfService",
+    "Signature": "UniRx_Async_UniTask_o Dark_StateMachine_Title_Title__OnTermOfService (Dark_StateMachine_Title_Title_o* __this, Adam_Framework_Core_Station_ITransactionUserData_o* userdata, System_Threading_CancellationToken_o cancellationToken, const MethodInfo* method);",
+    "TypeSignature": "iiiii"
+  },
+  "Title$$OnFirstDownload": {
+    "Address": 51108916,
+    "Name": "Dark.StateMachine.Title.Title$$OnFirstDownload",
+    "Signature": "UniRx_Async_UniTask_o Dark_StateMachine_Title_Title__OnFirstDownload (Dark_StateMachine_Title_Title_o* __this, Adam_Framework_Core_Station_ITransactionUserData_o* userdata, System_Threading_CancellationToken_o cxlToken, const MethodInfo* method);",
+    "TypeSignature": "iiiii"
+  },
+  "DarkOctoSetupper$$GetE": {
+    "Address": 56856512,
+    "Name": "Adam.Framework.Resource.DarkOctoSetupper$$GetE",
+    "Signature": "System_String_o* Adam_Framework_Resource_DarkOctoSetupper__GetE (const MethodInfo* method);",
+    "TypeSignature": "ii"
+  },
+  "DarkOctoSetupper$$StartSetup": {
+    "Address": 56847288,
+    "Name": "Adam.Framework.Resource.DarkOctoSetupper$$StartSetup",
+    "Signature": "void Adam_Framework_Resource_DarkOctoSetupper__StartSetup (bool reset, bool enableAssetDatabase, const MethodInfo* method);",
+    "TypeSignature": "viii"
+  },
+  "DarkOctoSetupper$$SetupOcto": {
+    "Address": 56857376,
+    "Name": "Adam.Framework.Resource.DarkOctoSetupper$$SetupOcto",
+    "Signature": "void Adam_Framework_Resource_DarkOctoSetupper__SetupOcto (bool reset, bool enableAssetDatabase, const MethodInfo* method);",
+    "TypeSignature": "viii"
+  },
+  "DarkOctoSetupper$$CreateSetting": {
+    "Address": 56857616,
+    "Name": "Adam.Framework.Resource.DarkOctoSetupper$$CreateSetting",
+    "Signature": "Octo_OctoFullSettings_o* Adam_Framework_Resource_DarkOctoSetupper__CreateSetting (const MethodInfo* method);",
+    "TypeSignature": "ii"
+  },
+  "WebViewConfig$$get_BaseUrl": {
+    "Address": 63841332,
+    "Name": "Art.Framework.ApiNetwork.Grpc.Api.Config.WebViewConfig$$get_BaseUrl",
+    "Signature": "System_String_o* Art_Framework_ApiNetwork_Grpc_Api_Config_WebViewConfig__get_BaseUrl (Art_Framework_ApiNetwork_Grpc_Api_Config_WebViewConfig_o* __this, const MethodInfo* method);",
+    "TypeSignature": "iii"
+  },
+  "NetworkConfig$$get_ServerAddress": {
+    "Address": 56743100,
+    "Name": "Dark.Networking.NetworkConfig$$get_ServerAddress",
+    "Signature": "System_String_o* Dark_Networking_NetworkConfig__get_ServerAddress (Dark_Networking_NetworkConfig_o* __this, const MethodInfo* method);",
+    "TypeSignature": "iii"
+  },
+  "NetworkConfig$$get_OriginalServerAddress": {
+    "Address": 56743104,
+    "Name": "Dark.Networking.NetworkConfig$$get_OriginalServerAddress",
+    "Signature": "System_String_o* Dark_Networking_NetworkConfig__get_OriginalServerAddress (Dark_Networking_NetworkConfig_o* __this, const MethodInfo* method);",
+    "TypeSignature": "iii"
+  },
+  "WebViewDialogPresenter$$GetWebViewServerAddress": {
+    "Address": 45573804,
+    "Name": "Dark.View.UserInterface.WebViewDialogPresenter$$GetWebViewServerAddress",
+    "Signature": "System_String_o* Dark_View_UserInterface_WebViewDialogPresenter__GetWebViewServerAddress (Dark_View_UserInterface_WebViewDialogPresenter_o* __this, const MethodInfo* method);",
+    "TypeSignature": "iii"
+  },
+  "UniWebViewInterface$$Load": {
+    "Address": 57741828,
+    "Name": "UniWebViewInterface$$Load",
+    "Signature": "void UniWebViewInterface__Load (System_String_o* name, System_String_o* url, bool skipEncoding, System_String_o* readAccessURL, const MethodInfo* method);",
+    "TypeSignature": "viiiii"
+  },
+  "TermOfServiceDialogPresenter$$Setup": {
+    "Address": 48515568,
+    "Name": "Dark.View.UserInterface.TermOfServiceDialogPresenter$$Setup",
+    "Signature": "void Dark_View_UserInterface_TermOfServiceDialogPresenter__Setup (Dark_View_UserInterface_TermOfServiceDialogPresenter_o* __this, System_String_o* url, const MethodInfo* method);",
+    "TypeSignature": "viii"
+  },
+  "Config.Api$$.cctor": {
+    "Address": 48609176,
+    "Name": "Dark.Entrypoint.Config.Api$$.cctor",
+    "Signature": "void Dark_Entrypoint_Config_Api___cctor (const MethodInfo* method);",
+    "TypeSignature": "vi"
+  }
+}

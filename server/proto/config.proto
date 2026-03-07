@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Config";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+
+package apb.api.config;
+
+service ConfigService {
+	rpc GetReviewServerConfig (google.protobuf.Empty) returns (GetReviewServerConfigResponse);
+}
+
+message GetReviewServerConfigResponse {
+	ApiConfig api = 1;
+	OctoConfig octo = 2;
+	WebViewConfig webView = 3;
+	MasterDataConfig masterData = 4;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ApiConfig {
+	string hostname = 1;
+	int32 port = 2;
+}
+
+message OctoConfig {
+	int32 version = 1;
+	int32 appId = 2;
+	string clientSecretKey = 3;
+	string aesKey = 4;
+	string url = 5;
+}
+
+message WebViewConfig {
+	string baseUrl = 1;
+}
+
+message MasterDataConfig {
+	string urlFormat = 1;
+}

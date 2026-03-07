@@ -1,0 +1,334 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Quest";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+import "proto/mission.proto";
+
+package apb.api.quest;
+
+service QuestService {
+	rpc UpdateMainFlowSceneProgress (UpdateMainFlowSceneProgressRequest) returns (UpdateMainFlowSceneProgressResponse);
+	rpc UpdateReplayFlowSceneProgress (UpdateReplayFlowSceneProgressRequest) returns (UpdateReplayFlowSceneProgressResponse);
+	rpc UpdateMainQuestSceneProgress (UpdateMainQuestSceneProgressRequest) returns (UpdateMainQuestSceneProgressResponse);
+	rpc UpdateExtraQuestSceneProgress (UpdateExtraQuestSceneProgressRequest) returns (UpdateExtraQuestSceneProgressResponse);
+	rpc UpdateEventQuestSceneProgress (UpdateEventQuestSceneProgressRequest) returns (UpdateEventQuestSceneProgressResponse);
+	rpc StartMainQuest (StartMainQuestRequest) returns (StartMainQuestResponse);
+	rpc RestartMainQuest (RestartMainQuestRequest) returns (RestartMainQuestResponse);
+	rpc FinishMainQuest (FinishMainQuestRequest) returns (FinishMainQuestResponse);
+	rpc StartExtraQuest (StartExtraQuestRequest) returns (StartExtraQuestResponse);
+	rpc RestartExtraQuest (RestartExtraQuestRequest) returns (RestartExtraQuestResponse);
+	rpc FinishExtraQuest (FinishExtraQuestRequest) returns (FinishExtraQuestResponse);
+	rpc StartEventQuest (StartEventQuestRequest) returns (StartEventQuestResponse);
+	rpc RestartEventQuest (RestartEventQuestRequest) returns (RestartEventQuestResponse);
+	rpc FinishEventQuest (FinishEventQuestRequest) returns (FinishEventQuestResponse);
+	rpc FinishAutoOrbit (google.protobuf.Empty) returns (FinishAutoOrbitResponse);
+	rpc SetRoute (SetRouteRequest) returns (SetRouteResponse);
+	rpc SetQuestSceneChoice (SetQuestSceneChoiceRequest) returns (SetQuestSceneChoiceResponse);
+	rpc ReceiveTowerAccumulationReward (ReceiveTowerAccumulationRewardRequest) returns (ReceiveTowerAccumulationRewardResponse);
+	rpc SkipQuest (SkipQuestRequest) returns (SkipQuestResponse);
+	rpc SkipQuestBulk (SkipQuestBulkRequest) returns (SkipQuestBulkResponse);
+	rpc SetAutoSaleSetting (SetAutoSaleSettingRequest) returns (SetAutoSaleSettingResponse);
+	rpc StartGuerrillaFreeOpen (google.protobuf.Empty) returns (StartGuerrillaFreeOpenResponse);
+	rpc ResetLimitContentQuestProgress (ResetLimitContentQuestProgressRequest) returns (ResetLimitContentQuestProgressResponse);
+	rpc ReceiveDailyQuestGroupCompleteReward (google.protobuf.Empty) returns (ReceiveDailyQuestGroupCompleteRewardResponse);
+}
+
+message UpdateMainFlowSceneProgressRequest {
+	int32 questSceneId = 1;
+}
+
+message UpdateMainFlowSceneProgressResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UpdateReplayFlowSceneProgressRequest {
+	int32 questSceneId = 1;
+}
+
+message UpdateReplayFlowSceneProgressResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UpdateMainQuestSceneProgressRequest {
+	int32 questSceneId = 1;
+}
+
+message UpdateMainQuestSceneProgressResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UpdateExtraQuestSceneProgressRequest {
+	int32 questSceneId = 1;
+}
+
+message UpdateExtraQuestSceneProgressResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UpdateEventQuestSceneProgressRequest {
+	int32 questSceneId = 1;
+}
+
+message UpdateEventQuestSceneProgressResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message StartMainQuestRequest {
+	int32 questId = 1;
+	bool isMainFlow = 2;
+	int32 userDeckNumber = 3;
+	bool isBattleOnly = 4;
+	int32 maxAutoOrbitCount = 5;
+	bool isReplayFlow = 6;
+	apb.api.mission.CageMeasurableValues cageMeasurableValues = 50;
+}
+
+message StartMainQuestResponse {
+	repeated BattleDropReward battleDropReward = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message BattleDropReward {
+	int32 questSceneId = 1;
+	int32 battleDropCategoryId = 2;
+	int32 battleDropEffectId = 3;
+}
+
+message RestartMainQuestRequest {
+	int32 questId = 1;
+	bool isMainFlow = 2;
+}
+
+message RestartMainQuestResponse {
+	repeated BattleDropReward battleDropReward = 1;
+	bytes battleBinary = 2;
+	int32 deckNumber = 3;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message FinishMainQuestRequest {
+	int32 questId = 1;
+	bool isRetired = 2;
+	bool isMainFlow = 3;
+	bool isAnnihilated = 4;
+	bool isAutoOrbit = 5;
+	int32 storySkipType = 6;
+	bool isReplayFlow = 7;
+	string vt = 200;
+}
+
+message FinishMainQuestResponse {
+	repeated QuestReward dropReward = 1;
+	repeated QuestReward firstClearReward = 2;
+	repeated QuestReward missionClearReward = 3;
+	repeated QuestReward missionClearCompleteReward = 4;
+	repeated QuestReward autoOrbitResult = 5;
+	bool isBigWin = 6;
+	repeated int32 bigWinClearedQuestMissionIdList = 7;
+	repeated QuestReward replayFlowFirstClearReward = 8;
+	repeated QuestReward userStatusCampaignReward = 9;
+	QuestAutoOrbitResult autoOrbitReward = 10;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message QuestReward {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+	int32 rewardEffectId = 4;
+	bool isAutoSale = 5;
+	bytes equipmentData = 6;
+}
+
+message QuestAutoOrbitResult {
+	repeated QuestReward dropReward = 1;
+	repeated QuestReward userStatusCampaignReward = 2;
+}
+
+message StartExtraQuestRequest {
+	int32 questId = 1;
+	int32 userDeckNumber = 2;
+}
+
+message StartExtraQuestResponse {
+	repeated BattleDropReward battleDropReward = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message RestartExtraQuestRequest {
+	int32 questId = 1;
+}
+
+message RestartExtraQuestResponse {
+	repeated BattleDropReward battleDropReward = 1;
+	bytes battleBinary = 2;
+	int32 deckNumber = 3;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message FinishExtraQuestRequest {
+	int32 questId = 1;
+	bool isRetired = 2;
+	bool isAnnihilated = 3;
+	int32 storySkipType = 4;
+	string vt = 200;
+}
+
+message FinishExtraQuestResponse {
+	repeated QuestReward dropReward = 1;
+	repeated QuestReward firstClearReward = 2;
+	repeated QuestReward missionClearReward = 3;
+	repeated QuestReward missionClearCompleteReward = 4;
+	bool isBigWin = 5;
+	repeated int32 bigWinClearedQuestMissionIdList = 6;
+	repeated QuestReward userStatusCampaignReward = 7;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message StartEventQuestRequest {
+	int32 eventQuestChapterId = 1;
+	int32 questId = 2;
+	int32 userDeckNumber = 3;
+	bool isBattleOnly = 4;
+	int32 maxAutoOrbitCount = 5;
+}
+
+message StartEventQuestResponse {
+	repeated BattleDropReward battleDropReward = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message RestartEventQuestRequest {
+	int32 eventQuestChapterId = 1;
+	int32 questId = 2;
+}
+
+message RestartEventQuestResponse {
+	repeated BattleDropReward battleDropReward = 1;
+	bytes battleBinary = 2;
+	int32 deckNumber = 3;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message FinishEventQuestRequest {
+	int32 eventQuestChapterId = 1;
+	int32 questId = 2;
+	bool isRetired = 3;
+	bool isAnnihilated = 4;
+	bool isAutoOrbit = 5;
+	int32 storySkipType = 6;
+	string vt = 200;
+}
+
+message FinishEventQuestResponse {
+	repeated QuestReward dropReward = 1;
+	repeated QuestReward firstClearReward = 2;
+	repeated QuestReward missionClearReward = 3;
+	repeated QuestReward missionClearCompleteReward = 4;
+	repeated QuestReward autoOrbitResult = 5;
+	bool isBigWin = 6;
+	repeated int32 bigWinClearedQuestMissionIdList = 7;
+	repeated QuestReward userStatusCampaignReward = 8;
+	QuestAutoOrbitResult autoOrbitReward = 9;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message FinishAutoOrbitResponse {
+	repeated QuestReward autoOrbitResult = 1;
+	QuestAutoOrbitResult autoOrbitReward = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SetRouteRequest {
+	int32 mainQuestRouteId = 1;
+}
+
+message SetRouteResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SetQuestSceneChoiceRequest {
+	int32 questSceneId = 1;
+	int32 choiceNumber = 2;
+	int32 questFlowType = 3;
+}
+
+message SetQuestSceneChoiceResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReceiveTowerAccumulationRewardRequest {
+	int32 eventQuestChapterId = 1;
+	int32 targetMissionClearCount = 2;
+}
+
+message ReceiveTowerAccumulationRewardResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SkipQuestRequest {
+	int32 questId = 1;
+	int32 questType = 2;
+	int32 userDeckNumber = 3;
+	int32 skipCount = 4;
+	repeated UseEffectItem useEffectItem = 5;
+	int32 questChapterId = 6;
+}
+
+message UseEffectItem {
+	int32 consumableItemId = 1;
+	int32 count = 2;
+}
+
+message SkipQuestResponse {
+	repeated QuestReward dropReward = 1;
+	repeated QuestReward userStatusCampaignReward = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SkipQuestBulkRequest {
+	repeated SkipQuestInfo skipQuestInfo = 1;
+	int32 userDeckNumber = 2;
+	repeated UseEffectItem useEffectItem = 3;
+}
+
+message SkipQuestInfo {
+	int32 questId = 1;
+	int32 questType = 2;
+	int32 questChapterId = 3;
+	int32 skipCount = 4;
+}
+
+message SkipQuestBulkResponse {
+	repeated QuestReward dropReward = 1;
+	repeated QuestReward userStatusCampaignReward = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SetAutoSaleSettingRequest {
+	map<int32, string> autoSaleSettingItem = 1;
+}
+
+message SetAutoSaleSettingResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message StartGuerrillaFreeOpenResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ResetLimitContentQuestProgressRequest {
+	int32 eventQuestChapterId = 1;
+	int32 questId = 2;
+}
+
+message ResetLimitContentQuestProgressResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReceiveDailyQuestGroupCompleteRewardResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

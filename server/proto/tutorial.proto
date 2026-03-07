@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Tutorial";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+import "proto/deck.proto";
+
+package apb.api.tutorial;
+
+service TutorialService {
+	rpc SetTutorialProgress (SetTutorialProgressRequest) returns (SetTutorialProgressResponse);
+	rpc SetTutorialProgressAndReplaceDeck (SetTutorialProgressAndReplaceDeckRequest) returns (SetTutorialProgressAndReplaceDeckResponse);
+}
+
+message SetTutorialProgressRequest {
+	int32 tutorialType = 1;
+	int32 progressPhase = 2;
+	int32 choiceId = 3;
+}
+
+message SetTutorialProgressResponse {
+	repeated TutorialChoiceReward tutorialChoiceReward = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message TutorialChoiceReward {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+}
+
+message SetTutorialProgressAndReplaceDeckRequest {
+	int32 tutorialType = 1;
+	int32 progressPhase = 2;
+	int32 deckType = 3;
+	int32 userDeckNumber = 4;
+	apb.api.deck.Deck deck = 5;
+}
+
+message SetTutorialProgressAndReplaceDeckResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

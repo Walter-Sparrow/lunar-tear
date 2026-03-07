@@ -1,0 +1,139 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Battle";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.battle;
+
+service BattleService {
+	rpc StartWave (StartWaveRequest) returns (StartWaveResponse);
+	rpc FinishWave (FinishWaveRequest) returns (FinishWaveResponse);
+}
+
+message BattleReportRandomDisplay {
+	int32 randomDisplayValueType = 1;
+	int64 randomDisplayValue = 2;
+}
+
+message CostumeBattleInfo {
+	int32 deckCharacterNumber = 1;
+	int64 totalDamage = 2;
+	bool isAlive = 4;
+	int32 hitCount = 5;
+	int64 maxHp = 6;
+	int64 remainingHp = 7;
+	int32 userDeckNumber = 30;
+	BattleReportRandomDisplay battleReportRandomDisplay = 50;
+}
+
+message StartWaveRequest {
+	repeated UserPartyInitialInfo userPartyInitialInfoList = 1;
+	repeated NpcPartyInitialInfo npcPartyInitialInfoList = 2;
+}
+
+message UserPartyInitialInfo {
+	int64 userId = 1;
+	int32 deckType = 2;
+	int64 userDeckNumber = 3;
+	int64 totalHp = 4;
+	string vt = 200;
+}
+
+message NpcPartyInitialInfo {
+	int64 npcId = 1;
+	int32 deckType = 2;
+	int32 battleNpcDeckNumber = 3;
+	int64 totalHp = 4;
+}
+
+message StartWaveResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message FinishWaveRequest {
+	bytes battleBinary = 1;
+	BattleDetail battleDetail = 2;
+	repeated UserPartyResultInfo userPartyResultInfoList = 3;
+	repeated NpcPartyResultInfo npcPartyResultInfoList = 4;
+	int64 elapsedFrameCount = 5;
+	string vt = 200;
+}
+
+message BattleDetail {
+	int32 characterDeathCount = 1;
+	int32 maxDamage = 2;
+	int32 playerCostumeActiveSkillUsedCount = 3;
+	int32 playerWeaponActiveSkillUsedCount = 4;
+	int32 playerCompanionSkillUsedCount = 5;
+	int32 criticalCount = 6;
+	int32 comboCount = 7;
+	int32 comboMaxDamage = 8;
+	repeated CostumeBattleInfo costumeBattleInfo = 9;
+	int64 totalRecoverPoint = 10;
+}
+
+message UserPartyResultInfo {
+	int64 userId = 1;
+	int32 deckType = 2;
+	int32 userDeckNumber = 3;
+	repeated AddUserDamageInfo addDamageInfoList = 4;
+	repeated UserRecoverInfo userRecoverInfo = 5;
+	repeated SkillUseInfo skillUseInfo = 6;
+	int32 characterDeathCount = 7;
+	int32 characterReviveCount = 8;
+	int32 characterHpDepletedCount = 9;
+}
+
+message AddUserDamageInfo {
+	int64 userId = 1;
+	int32 deckType = 2;
+	int32 deckNumber = 3;
+	int64 totalDamage = 4;
+	int64 totalUnclampedDamage = 5;
+}
+
+message UserRecoverInfo {
+	int64 userId = 1;
+	int32 deckType = 2;
+	int32 deckNumber = 3;
+	int64 totalRecoverPoint = 4;
+}
+
+message SkillUseInfo {
+	string deckCharacterUuid = 1;
+	int32 skillDetailId = 2;
+	int32 useCount = 3;
+}
+
+message NpcPartyResultInfo {
+	int64 npcId = 1;
+	int32 deckType = 2;
+	int32 battleNpcDeckNumber = 3;
+	repeated AddNpcDamageInfo addDamageInfoList = 4;
+	repeated NpcRecoverInfo npcRecoverInfo = 5;
+	repeated SkillUseInfo skillUseInfo = 6;
+	int32 characterDeathCount = 7;
+	int32 characterReviveCount = 8;
+	int32 characterHpDepletedCount = 9;
+}
+
+message AddNpcDamageInfo {
+	int64 npcId = 1;
+	int32 deckType = 2;
+	int32 deckNumber = 3;
+	int64 totalDamage = 4;
+	int64 totalUnclampedDamage = 5;
+}
+
+message NpcRecoverInfo {
+	int64 npcId = 1;
+	int32 deckType = 2;
+	int32 deckNumber = 3;
+	int64 totalRecoverPoint = 4;
+}
+
+message FinishWaveResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

@@ -7,6 +7,9 @@ server/bin/
 server/tmp/
 server/lunar-tear
 
+frida/build/
+node_modules/
+
 # Go
 server/vendor/
 
@@ -15,12 +18,14 @@ server/certs/
 
 # Server assets (binary data, too large for git)
 server/assets/
+extracted_tables/
+master_data/
 
 # Client APK and dumps
 client/
 tools/
 
-# Generated protobuf (regenerate with protoc)
+# Generated protobuf (regenerate: cd server && make proto)
 server/gen/
 
 # OS junk

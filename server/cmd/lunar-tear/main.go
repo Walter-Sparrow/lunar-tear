@@ -11,43 +11,67 @@ import (
 	pb "lunar-tear/server/gen/proto"
 	"lunar-tear/server/internal/service"
 
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
 
+// loggingListener wraps a net.Listener and logs every accepted connection.
+type loggingListener struct {
+	net.Listener
+}
+
+func (l loggingListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		log.Printf("[gRPC] Accept error: %v", err)
+		return nil, err
+	}
+	log.Printf("[gRPC] New connection from %v", conn.RemoteAddr())
+	return conn, nil
+}
+
 func main() {
 	grpcPort := flag.Int("grpc-port", 7777, "gRPC server port")
 	httpPort := flag.Int("http-port", 8080, "HTTP server port (Octo API)")
-	host := flag.String("host", "10.0.2.2", "hostname the client will connect to (10.0.2.2 = host from Android emulator)")
+	host := flag.String("host", "127.0.0.1", "hostname the client will connect to")
 	flag.Parse()
 
-	// Start HTTP server for Octo API and general game HTTP
+	// Start HTTP server for Octo API and general game HTTP (HTTP/1.1 + HTTP/2 cleartext)
 	octoServer := service.NewOctoHTTPServer()
+	h2s := &http2.Server{}
+	octoHandler := h2c.NewHandler(octoServer.Handler(), h2s)
 	go func() {
-		log.Printf("Octo HTTP server listening on :%d", *httpPort)
-		if err := http.ListenAndServe(fmt.Sprintf(":%d", *httpPort), octoServer.Handler()); err != nil {
+		log.Printf("Octo HTTP server listening on :%d (HTTP/1.1 + h2c)", *httpPort)
+		srv := &http.Server{Addr: fmt.Sprintf(":%d", *httpPort), Handler: octoHandler}
+		http2.ConfigureServer(srv, h2s)
+		if err := srv.ListenAndServe(); err != nil {
 			log.Fatalf("HTTP server on %d failed: %v", *httpPort, err)
 		}
 	}()
 	// Also listen on port 80 for plain HTTP requests (game web API)
 	go func() {
-		log.Printf("HTTP server also listening on :80")
-		if err := http.ListenAndServe(":80", octoServer.Handler()); err != nil {
+		log.Printf("HTTP server also listening on :80 (HTTP/1.1 + h2c)")
+		srv80 := &http.Server{Addr: ":80", Handler: octoHandler}
+		http2.ConfigureServer(srv80, h2s)
+		if err := srv80.ListenAndServe(); err != nil {
 			log.Printf("HTTP server on :80 failed (non-fatal): %v", err)
 		}
 	}()
-	// Listen on port 443 with TLS for HTTPS requests (game web API)
-	go func() {
-		log.Printf("HTTPS server listening on :443")
-		if err := http.ListenAndServeTLS(":443", "certs/cert.pem", "certs/key.pem", octoServer.Handler()); err != nil {
-			log.Printf("HTTPS server on :443 failed (non-fatal): %v", err)
-		}
-	}()
-
-	// Start gRPC server (plaintext — client TLS is disabled via Frida)
+	// Start gRPC server (plaintext — client TLS is disabled via Frida / APK patches)
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *grpcPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
+	}
+	lis = loggingListener{Listener: lis}
+
+	// Also listen gRPC on 443 when client uses host-only patch (default port 443)
+	lis443, err443 := net.Listen("tcp", ":443")
+	if err443 != nil {
+		log.Printf("gRPC on :443 skipped (need sudo or port in use): %v", err443)
+	} else {
+		lis443 = loggingListener{Listener: lis443}
 	}
 
 	grpcServer := grpc.NewServer(
@@ -58,30 +82,17 @@ func main() {
 	pb.RegisterConfigServiceServer(grpcServer, service.NewConfigServiceServer(*host, int32(*grpcPort)))
 	pb.RegisterDataServiceServer(grpcServer, service.NewDataServiceServer())
 	pb.RegisterTutorialServiceServer(grpcServer, service.NewTutorialServiceServer())
-	pb.RegisterGamePlayServiceServer(grpcServer, service.NewGamePlayServiceServer())
+	pb.RegisterGameplayServiceServer(grpcServer, service.NewGameplayServiceServer())
 	pb.RegisterQuestServiceServer(grpcServer, service.NewQuestServiceServer())
 	pb.RegisterNotificationServiceServer(grpcServer, service.NewNotificationServiceServer())
-
-	// Also register services under the client's expected full package paths
-	dataAltDesc := pb.DataService_ServiceDesc
-	dataAltDesc.ServiceName = "apb.api.data.DataService"
-	grpcServer.RegisterService(&dataAltDesc, service.NewDataServiceServer())
-
-	gameplayAltDesc := pb.GamePlayService_ServiceDesc
-	gameplayAltDesc.ServiceName = "apb.api.gameplay.GamePlayService"
-	grpcServer.RegisterService(&gameplayAltDesc, service.NewGamePlayServiceServer())
-
-	questAltDesc := pb.QuestService_ServiceDesc
-	questAltDesc.ServiceName = "apb.api.quest.QuestService"
-	grpcServer.RegisterService(&questAltDesc, service.NewQuestServiceServer())
-
-	notifAltDesc := pb.NotificationService_ServiceDesc
-	notifAltDesc.ServiceName = "apb.api.notification.NotificationService"
-	grpcServer.RegisterService(&notifAltDesc, service.NewNotificationServiceServer())
 
 	reflection.Register(grpcServer)
 
 	log.Printf("gRPC server listening on :%d", *grpcPort)
+	if lis443 != nil {
+		go grpcServer.Serve(lis443)
+		log.Printf("gRPC server also listening on :443 (for host-only patched client)")
+	}
 	log.Printf("client host address: %s:%d", *host, *grpcPort)
 
 	if err := grpcServer.Serve(lis); err != nil {

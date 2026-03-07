@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Character";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.character;
+
+service CharacterService {
+	rpc Rebirth (RebirthRequest) returns (RebirthResponse);
+}
+
+message RebirthRequest {
+	int32 characterId = 1;
+	int32 rebirthCount = 2;
+}
+
+message RebirthResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

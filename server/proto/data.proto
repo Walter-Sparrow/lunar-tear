@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Data";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+
+package apb.api.data;
+
+service DataService {
+	rpc GetLatestMasterDataVersion (google.protobuf.Empty) returns (MasterDataGetLatestVersionResponse);
+	rpc GetUserDataNameV2 (google.protobuf.Empty) returns (UserDataGetNameResponseV2);
+	rpc GetUserData (UserDataGetRequest) returns (UserDataGetResponse);
+}
+
+message DiffData {
+	string updateRecordsJson = 1;
+	string deleteKeysJson = 2;
+}
+
+message MasterDataGetLatestVersionResponse {
+	string latestMasterDataVersion = 1;
+}
+
+message UserDataGetNameResponseV2 {
+	repeated TableNameList tableNameList = 1;
+}
+
+message TableNameList {
+	repeated string tableName = 1;
+}
+
+message UserDataGetRequest {
+	repeated string tableName = 1;
+}
+
+message UserDataGetResponse {
+	map<string, string> userDataJson = 1;
+}

@@ -5,23 +5,24 @@ import (
 	"log"
 
 	pb "lunar-tear/server/gen/proto"
+	"lunar-tear/server/internal/mock"
 )
 
-type GamePlayServiceServer struct {
-	pb.UnimplementedGamePlayServiceServer
+type GameplayServiceServer struct {
+	pb.UnimplementedGameplayServiceServer
 }
 
-func NewGamePlayServiceServer() *GamePlayServiceServer {
-	return &GamePlayServiceServer{}
+func NewGameplayServiceServer() *GameplayServiceServer {
+	return &GameplayServiceServer{}
 }
 
-func (s *GamePlayServiceServer) CheckBeforeGamePlay(ctx context.Context, req *pb.CheckBeforeGamePlayRequest) (*pb.CheckBeforeGamePlayResponse, error) {
+func (s *GameplayServiceServer) CheckBeforeGamePlay(ctx context.Context, req *pb.CheckBeforeGamePlayRequest) (*pb.CheckBeforeGamePlayResponse, error) {
 	log.Printf("[GamePlayService] CheckBeforeGamePlay: tr=%s voiceLang=%d textLang=%d",
 		req.Tr, req.VoiceClientSystemLanguageTypeId, req.TextClientSystemLanguageTypeId)
 
 	return &pb.CheckBeforeGamePlayResponse{
-		IsExistUnreadPop:  false,
+		IsExistUnreadPop:   false,
 		MenuGachaBadgeInfo: []*pb.MenuGachaBadgeInfo{},
-		DiffUserData:      map[string]*pb.DiffData{},
+		DiffUserData:       mock.EmptyDiff(),
 	}, nil
 }

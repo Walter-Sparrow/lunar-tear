@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.SideStoryQuest";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.sidestoryquest;
+
+service SidestoryquestService {
+	rpc MoveSideStoryQuestProgress (MoveSideStoryQuestRequest) returns (MoveSideStoryQuestResponse);
+	rpc UpdateSideStoryQuestSceneProgress (UpdateSideStoryQuestSceneProgressRequest) returns (UpdateSideStoryQuestSceneProgressResponse);
+}
+
+message MoveSideStoryQuestRequest {
+	int32 sideStoryQuestId = 1;
+}
+
+message MoveSideStoryQuestResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UpdateSideStoryQuestSceneProgressRequest {
+	int32 sideStoryQuestId = 1;
+	int32 sideStoryQuestSceneId = 2;
+}
+
+message UpdateSideStoryQuestSceneProgressResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

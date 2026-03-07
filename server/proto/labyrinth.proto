@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Labyrinth";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.labyrinth;
+
+service LabyrinthService {
+	rpc UpdateSeasonData (UpdateSeasonDataRequest) returns (UpdateSeasonDataResponse);
+	rpc ReceiveStageClearReward (ReceiveStageClearRewardRequest) returns (ReceiveStageClearRewardResponse);
+	rpc ReceiveStageAccumulationReward (ReceiveStageAccumulationRewardRequest) returns (ReceiveStageAccumulationRewardResponse);
+}
+
+message LabyrinthSeasonResult {
+	int32 eventQuestChapterId = 1;
+	int32 headQuestId = 2;
+	repeated LabyrinthReward seasonReward = 3;
+	int32 headStageOrder = 4;
+}
+
+message LabyrinthReward {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+}
+
+message UpdateSeasonDataRequest {
+	int32 eventQuestChapterId = 1;
+}
+
+message UpdateSeasonDataResponse {
+	repeated LabyrinthSeasonResult seasonResult = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReceiveStageClearRewardRequest {
+	int32 eventQuestChapterId = 1;
+	int32 stageOrder = 2;
+}
+
+message ReceiveStageClearRewardResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ReceiveStageAccumulationRewardRequest {
+	int32 eventQuestChapterId = 1;
+	int32 stageOrder = 2;
+	int32 questMissionClearCount = 3;
+}
+
+message ReceiveStageAccumulationRewardResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

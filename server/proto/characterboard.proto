@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.CharacterBoard";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.characterboard;
+
+service CharacterboardService {
+	rpc ReleasePanel (ReleasePanelRequest) returns (ReleasePanelResponse);
+}
+
+message ReleasePanelRequest {
+	repeated int32 characterBoardPanelId = 1;
+}
+
+message ReleasePanelResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

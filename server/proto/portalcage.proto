@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.PortalCage";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+
+package apb.api.portalcage;
+
+service PortalcageService {
+	rpc UpdatePortalCageSceneProgress (UpdatePortalCageSceneProgressRequest) returns (UpdatePortalCageSceneProgressResponse);
+	rpc GetDropItem (google.protobuf.Empty) returns (GetDropItemResponse);
+}
+
+message UpdatePortalCageSceneProgressRequest {
+	int32 portalCageSceneId = 1;
+}
+
+message UpdatePortalCageSceneProgressResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetDropItemResponse {
+	repeated PortalCageDropItem portalCageDropItem = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message PortalCageDropItem {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+}

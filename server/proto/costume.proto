@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Costume";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.costume;
+
+service CostumeService {
+	rpc Enhance (EnhanceRequest) returns (EnhanceResponse);
+	rpc LimitBreak (LimitBreakRequest) returns (LimitBreakResponse);
+	rpc Awaken (AwakenRequest) returns (AwakenResponse);
+	rpc EnhanceActiveSkill (EnhanceActiveSkillRequest) returns (EnhanceActiveSkillResponse);
+	rpc RegisterLevelBonusConfirmed (RegisterLevelBonusConfirmedRequest) returns (RegisterLevelBonusConfirmedResponse);
+	rpc UnlockLotteryEffectSlot (UnlockLotteryEffectSlotRequest) returns (UnlockLotteryEffectSlotResponse);
+	rpc DrawLotteryEffect (DrawLotteryEffectRequest) returns (DrawLotteryEffectResponse);
+	rpc ConfirmLotteryEffect (ConfirmLotteryEffectRequest) returns (ConfirmLotteryEffectResponse);
+}
+
+message EnhanceRequest {
+	string userCostumeUuid = 1;
+	map<int32, int32> materials = 2;
+}
+
+message EnhanceResponse {
+	bool isGreatSuccess = 1;
+	map<int32, int32> surplusEnhanceMaterial = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message LimitBreakRequest {
+	string userCostumeUuid = 1;
+	map<int32, int32> materials = 2;
+}
+
+message LimitBreakResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message AwakenRequest {
+	string userCostumeUuid = 1;
+	map<int32, int32> materials = 2;
+}
+
+message AwakenResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message EnhanceActiveSkillRequest {
+	string userCostumeUuid = 1;
+	int32 addLevelCount = 2;
+}
+
+message EnhanceActiveSkillResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message RegisterLevelBonusConfirmedRequest {
+	int32 costumeId = 1;
+	int32 level = 2;
+}
+
+message RegisterLevelBonusConfirmedResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UnlockLotteryEffectSlotRequest {
+	string userCostumeUuid = 1;
+	int32 slotNumber = 2;
+}
+
+message UnlockLotteryEffectSlotResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message DrawLotteryEffectRequest {
+	string userCostumeUuid = 1;
+	int32 slotNumber = 2;
+}
+
+message DrawLotteryEffectResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message ConfirmLotteryEffectRequest {
+	string userCostumeUuid = 1;
+	bool isAccept = 2;
+}
+
+message ConfirmLotteryEffectResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

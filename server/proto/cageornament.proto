@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.CageOrnament";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/data.proto";
+
+package apb.api.cageornament;
+
+service CageornamentService {
+	rpc ReceiveReward (ReceiveRewardRequest) returns (ReceiveRewardResponse);
+	rpc RecordAccess (RecordAccessRequest) returns (RecordAccessResponse);
+}
+
+message ReceiveRewardRequest {
+	int32 cageOrnamentId = 1;
+}
+
+message ReceiveRewardResponse {
+	repeated CageOrnamentReward cageOrnamentReward = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message CageOrnamentReward {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+}
+
+message RecordAccessRequest {
+	int32 cageOrnamentId = 1;
+}
+
+message RecordAccessResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

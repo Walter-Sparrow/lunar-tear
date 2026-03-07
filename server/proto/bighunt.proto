@@ -1,0 +1,143 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.BigHunt";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+import "proto/battle.proto";
+
+package apb.api.bighunt;
+
+service BighuntService {
+	rpc StartBigHuntQuest (StartBigHuntQuestRequest) returns (StartBigHuntQuestResponse);
+	rpc UpdateBigHuntQuestSceneProgress (UpdateBigHuntQuestSceneProgressRequest) returns (UpdateBigHuntQuestSceneProgressResponse);
+	rpc FinishBigHuntQuest (FinishBigHuntQuestRequest) returns (FinishBigHuntQuestResponse);
+	rpc RestartBigHuntQuest (RestartBigHuntQuestRequest) returns (RestartBigHuntQuestResponse);
+	rpc SkipBigHuntQuest (SkipBigHuntQuestRequest) returns (SkipBigHuntQuestResponse);
+	rpc SaveBigHuntBattleInfo (SaveBigHuntBattleInfoRequest) returns (SaveBigHuntBattleInfoResponse);
+	rpc GetBigHuntTopData (google.protobuf.Empty) returns (GetBigHuntTopDataResponse);
+}
+
+message WeeklyScoreResult {
+	int32 attributeType = 1;
+	int64 beforeMaxScore = 2;
+	int64 currentMaxScore = 3;
+	int32 beforeAssetGradeIconId = 4;
+	int32 currentAssetGradeIconId = 5;
+	int64 afterMaxScore = 6;
+	int32 afterAssetGradeIconId = 7;
+}
+
+message BigHuntReward {
+	int32 possessionType = 1;
+	int32 possessionId = 2;
+	int32 count = 3;
+}
+
+message StartBigHuntQuestRequest {
+	int32 bigHuntBossQuestId = 1;
+	int32 bigHuntQuestId = 2;
+	int32 userDeckNumber = 3;
+	bool isDryRun = 4;
+}
+
+message StartBigHuntQuestResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message UpdateBigHuntQuestSceneProgressRequest {
+	int32 questSceneId = 1;
+}
+
+message UpdateBigHuntQuestSceneProgressResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message FinishBigHuntQuestRequest {
+	int32 bigHuntBossQuestId = 1;
+	int32 bigHuntQuestId = 2;
+	bool isRetired = 3;
+	string vt = 200;
+}
+
+message FinishBigHuntQuestResponse {
+	BigHuntScoreInfo scoreInfo = 1;
+	repeated BigHuntReward scoreReward = 2;
+	BigHuntBattleReport battleReport = 3;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message BigHuntScoreInfo {
+	int64 userScore = 1;
+	bool isHighScore = 2;
+	int64 totalDamage = 3;
+	int64 baseScore = 4;
+	int32 difficultyBonusPermil = 5;
+	int32 aliveBonusPermil = 6;
+	int32 maxComboBonusPermil = 7;
+	int32 assetGradeIconId = 8;
+}
+
+message BigHuntBattleReport {
+	repeated BigHuntBattleReportWave battleReportWave = 1;
+}
+
+message BigHuntBattleReportWave {
+	repeated BigHuntBattleReportCostume battleReportCostume = 1;
+}
+
+message BigHuntBattleReportCostume {
+	int32 costumeId = 1;
+	int64 totalDamage = 2;
+	int32 hitCount = 3;
+	apb.api.battle.BattleReportRandomDisplay battleReportRandomDisplay = 4;
+}
+
+message RestartBigHuntQuestRequest {
+	int32 bigHuntBossQuestId = 1;
+	int32 bigHuntQuestId = 2;
+}
+
+message RestartBigHuntQuestResponse {
+	bytes battleBinary = 1;
+	int32 deckNumber = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SkipBigHuntQuestRequest {
+	int32 bigHuntBossQuestId = 1;
+	int32 skipCount = 2;
+}
+
+message SkipBigHuntQuestResponse {
+	repeated BigHuntReward scoreReward = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message SaveBigHuntBattleInfoRequest {
+	bytes battleBinary = 1;
+	BigHuntBattleDetail bigHuntBattleDetail = 2;
+	int64 elapsedFrameCount = 3;
+	string vt = 200;
+}
+
+message BigHuntBattleDetail {
+	int32 deckType = 1;
+	int32 userTripleDeckNumber = 2;
+	int32 bossKnockDownCount = 3;
+	int32 maxComboCount = 4;
+	repeated apb.api.battle.CostumeBattleInfo costumeBattleInfo = 9;
+}
+
+message SaveBigHuntBattleInfoResponse {
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetBigHuntTopDataResponse {
+	repeated WeeklyScoreResult weeklyScoreResult = 1;
+	repeated BigHuntReward weeklyScoreReward = 2;
+	bool isReceivedWeeklyScoreReward = 3;
+	repeated BigHuntReward lastWeekWeeklyScoreReward = 4;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

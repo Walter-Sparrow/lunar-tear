@@ -1,0 +1,280 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Pvp";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "google/protobuf/empty.proto";
+import "proto/data.proto";
+import "google/protobuf/timestamp.proto";
+
+package apb.api.pvp;
+
+service PvpService {
+	rpc GetTopData (google.protobuf.Empty) returns (GetTopDataResponse);
+	rpc GetMatchingList (google.protobuf.Empty) returns (GetMatchingListResponse);
+	rpc UpdateMatchingList (google.protobuf.Empty) returns (UpdateMatchingListResponse);
+	rpc StartBattle (StartBattleRequest) returns (StartBattleResponse);
+	rpc FinishBattle (FinishBattleRequest) returns (FinishBattleResponse);
+	rpc GetRanking (GetRankingRequest) returns (GetRankingResponse);
+	rpc GetSeasonResult (google.protobuf.Empty) returns (GetSeasonResultResponse);
+	rpc GetAttackLogList (google.protobuf.Empty) returns (GetAttackLogListResponse);
+	rpc GetDefenseLogList (google.protobuf.Empty) returns (GetDefenseLogListResponse);
+}
+
+message WeeklyGradeResult {
+	int32 targetSeasonId = 1;
+	int32 pvpPoint = 2;
+	int32 pvpGradeWeeklyRewardGroupId = 3;
+}
+
+message SeasonRankResult {
+	int32 targetSeasonId = 1;
+	int32 rank = 2;
+	int32 pvpSeasonRankRewardGroupId = 3;
+}
+
+message WeeklyRankResult {
+	int32 targetSeasonId = 1;
+	int32 rank = 2;
+	int32 pvpWeeklyRankRewardGroupId = 3;
+}
+
+message GetTopDataResponse {
+	int32 currentSeasonId = 1;
+	int32 pvpPoint = 2;
+	int32 rank = 3;
+	WeeklyGradeResult weeklyGradeResult = 4;
+	SeasonRankResult seasonRankResult = 5;
+	WeeklyRankResult weeklyRankResult = 6;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetMatchingListResponse {
+	repeated MatchingOpponent matching = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message MatchingOpponent {
+	int64 playerId = 1;
+	string name = 2;
+	int32 pvpPoint = 3;
+	int32 rank = 4;
+	int32 deckPower = 5;
+	repeated int32 deckMainWeaponAttributeType = 6;
+	int32 mostPowerfulCostumeId = 7;
+}
+
+message UpdateMatchingListResponse {
+	repeated MatchingOpponent matching = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message StartBattleRequest {
+	int64 opponentPlayerId = 1;
+	int32 useDeckNumber = 2;
+}
+
+message StartBattleResponse {
+	repeated DeckCharacter opponentDeckCharacter = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message DeckCharacter {
+	CostumeInfo costume = 1;
+	CompanionInfo companion = 2;
+	WeaponInfo mainWeapon = 3;
+	repeated WeaponInfo subWeapon = 4;
+	repeated PartsInfo parts = 5;
+	repeated CharacterBoardAbilityInfo characterBoardAbilities = 6;
+	repeated CharacterBoardStatusUpInfo characterBoardStatusUps = 7;
+	repeated CostumeLevelBonusStatusUpInfo costumeLevelBonusStatusUps = 8;
+	repeated AwakenAbilityInfo awakenAbilities = 9;
+	repeated AwakenStatusUpInfo awakenStatusUps = 10;
+	ThoughtInfo thought = 11;
+	repeated StainedGlassStatusUpInfo stainedGlassStatusUps = 12;
+	repeated CostumeLotteryEffectAbilityInfo costumeLotteryEffectAbilities = 13;
+	repeated CostumeLotteryEffectStatusUpInfo costumeLotteryEffectStatusUps = 14;
+}
+
+message CostumeInfo {
+	int32 costumeId = 1;
+	int32 limitBreakCount = 2;
+	int32 level = 3;
+	int32 activeSkillLevel = 4;
+	int32 characterLevel = 5;
+	int32 costumeLotteryEffectUnlockedSlotCount = 6;
+}
+
+message CompanionInfo {
+	int32 companionId = 1;
+	int32 level = 2;
+}
+
+message WeaponInfo {
+	int32 weaponId = 1;
+	int32 limitBreakCount = 2;
+	int32 level = 3;
+	repeated WeaponAbilityInfo weaponAbility = 4;
+	repeated WeaponSkillInfo weaponSkill = 5;
+	AwakenAbilityInfo weaponAwakenAbility = 6;
+	repeated AwakenStatusUpInfo weaponAwakenStatusUps = 7;
+}
+
+message WeaponAbilityInfo {
+	int32 abilityId = 1;
+	int32 level = 2;
+}
+
+message WeaponSkillInfo {
+	int32 skillId = 1;
+	int32 level = 2;
+}
+
+message AwakenAbilityInfo {
+	int32 abilityId = 1;
+	int32 level = 2;
+}
+
+message AwakenStatusUpInfo {
+	int32 statusCalculationType = 1;
+	int32 hp = 2;
+	int32 attack = 3;
+	int32 vitality = 4;
+	int32 agility = 5;
+	int32 criticalRatio = 6;
+	int32 criticalAttack = 7;
+}
+
+message PartsInfo {
+	int32 partsId = 1;
+	int32 level = 2;
+	int32 partsMainStatusId = 3;
+	repeated PartsSubStatusInfo subPartsStatus = 4;
+}
+
+message PartsSubStatusInfo {
+	int32 level = 1;
+	int32 statusKindType = 2;
+	int32 statusCalculationType = 3;
+	int32 statusChangeValue = 4;
+}
+
+message CharacterBoardAbilityInfo {
+	int32 abilityId = 1;
+	int32 level = 2;
+}
+
+message CharacterBoardStatusUpInfo {
+	int32 statusCalculationType = 1;
+	int32 hp = 2;
+	int32 attack = 3;
+	int32 vitality = 4;
+	int32 agility = 5;
+	int32 criticalRatio = 6;
+	int32 criticalAttack = 7;
+}
+
+message CostumeLevelBonusStatusUpInfo {
+	int32 statusCalculationType = 1;
+	int32 hp = 2;
+	int32 attack = 3;
+	int32 vitality = 4;
+	int32 agility = 5;
+	int32 criticalRatio = 6;
+	int32 criticalAttack = 7;
+}
+
+message ThoughtInfo {
+	int32 thoughtId = 1;
+}
+
+message StainedGlassStatusUpInfo {
+	int32 statusCalculationType = 1;
+	int32 hp = 2;
+	int32 attack = 3;
+	int32 vitality = 4;
+	int32 agility = 5;
+	int32 criticalRatio = 6;
+	int32 criticalAttack = 7;
+}
+
+message CostumeLotteryEffectAbilityInfo {
+	int32 abilityId = 1;
+	int32 level = 2;
+}
+
+message CostumeLotteryEffectStatusUpInfo {
+	int32 statusCalculationType = 1;
+	int32 hp = 2;
+	int32 attack = 3;
+	int32 vitality = 4;
+	int32 agility = 5;
+	int32 criticalRatio = 6;
+	int32 criticalAttack = 7;
+}
+
+message FinishBattleRequest {
+	int64 opponentPlayerId = 1;
+	bool isVictory = 2;
+}
+
+message FinishBattleResponse {
+	int32 beforePvpPoint = 1;
+	int32 beforeRank = 2;
+	int32 afterPvpPoint = 3;
+	int32 afterRank = 4;
+	int32 pvpGradeOneMatchRewardId = 5;
+	int32 pvpGradeGroupId = 6;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetRankingRequest {
+	int32 rankFrom = 1;
+}
+
+message GetRankingResponse {
+	repeated RankingUser rankingUser = 1;
+	int32 userCount = 2;
+	int32 rankingPosition = 3;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message RankingUser {
+	int32 rank = 1;
+	int64 playerId = 2;
+	string name = 3;
+	int32 pvpPoint = 4;
+	int32 deckPower = 5;
+	int32 favoriteCostumeId = 6;
+}
+
+message GetSeasonResultResponse {
+	int32 attackWinCount = 1;
+	int32 attackLoseCount = 2;
+	int32 attackPvpPoint = 3;
+	int32 defenseWinRatePermil = 4;
+	int32 defensePvpPoint = 5;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GetAttackLogListResponse {
+	repeated BattleLog attackLog = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message BattleLog {
+	int64 playerId = 1;
+	string name = 2;
+	int32 pvpPoint = 3;
+	int32 deckPower = 4;
+	repeated int32 deckCostumeId = 5;
+	bool isVictory = 6;
+	google.protobuf.Timestamp battleDatetime = 7;
+	int32 fluctuatedPvpPoint = 8;
+	int32 rank = 9;
+}
+
+message GetDefenseLogListResponse {
+	repeated BattleLog defenseLog = 1;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pb "lunar-tear/server/gen/proto"
+	"lunar-tear/server/internal/mock"
 
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -30,14 +31,9 @@ func (s *UserServiceServer) RegisterUser(ctx context.Context, req *pb.RegisterUs
 	log.Printf("[UserService] RegisterUser: uuid=%s terminalId=%s -> userId=%d", req.Uuid, req.TerminalId, userID)
 
 	return &pb.RegisterUserResponse{
-		UserId:    userID,
-		Signature: fmt.Sprintf("sig_%d_%d", userID, time.Now().Unix()),
-		DiffUserData: map[string]*pb.DiffData{
-			"user": {
-				UpdateRecordsJson: fmt.Sprintf(`[{"UserId":%d,"PlayerId":%d,"OsType":2,"PlatformType":2,"UserRestrictionType":0,"RegisterDatetime":%d,"GameStartDatetime":0,"LatestVersion":0}]`,
-					userID, userID, time.Now().Unix()),
-			},
-		},
+		UserId:       userID,
+		Signature:    fmt.Sprintf("sig_%d_%d", userID, time.Now().Unix()),
+		DiffUserData: mock.BaselineDiff(userID),
 	}, nil
 }
 
@@ -51,8 +47,8 @@ func (s *UserServiceServer) Auth(ctx context.Context, req *pb.AuthUserRequest) (
 		SessionKey:     sessionKey,
 		ExpireDatetime: timestamppb.New(expire),
 		Signature:      req.Signature,
-		UserId:         1001,
-		DiffUserData:   map[string]*pb.DiffData{},
+		UserId:         mock.DefaultUserID,
+		DiffUserData:   mock.BaselineDiff(mock.DefaultUserID),
 	}, nil
 }
 
@@ -66,69 +62,69 @@ func (s *UserServiceServer) GameStart(ctx context.Context, _ *emptypb.Empty) (*p
 	}
 
 	return &pb.GameStartResponse{
-		DiffUserData: map[string]*pb.DiffData{},
+		DiffUserData: mock.BaselineDiff(mock.DefaultUserID),
 	}, nil
 }
 
 func (s *UserServiceServer) TransferUser(ctx context.Context, req *pb.TransferUserRequest) (*pb.TransferUserResponse, error) {
 	log.Printf("[UserService] TransferUser")
 	return &pb.TransferUserResponse{
-		Uuid:         "transferred-uuid",
+		UserId:       mock.DefaultUserID,
 		Signature:    "transferred-sig",
-		DiffUserData: map[string]*pb.DiffData{},
+		DiffUserData: mock.EmptyDiff(),
 	}, nil
 }
 
 func (s *UserServiceServer) SetUserName(ctx context.Context, req *pb.SetUserNameRequest) (*pb.SetUserNameResponse, error) {
-	log.Printf("[UserService] SetUserName: %s", req.UserName)
-	return &pb.SetUserNameResponse{DiffUserData: map[string]*pb.DiffData{}}, nil
+	log.Printf("[UserService] SetUserName: %s", req.Name)
+	return &pb.SetUserNameResponse{DiffUserData: mock.EmptyDiff()}, nil
 }
 
 func (s *UserServiceServer) SetUserMessage(ctx context.Context, req *pb.SetUserMessageRequest) (*pb.SetUserMessageResponse, error) {
-	log.Printf("[UserService] SetUserMessage: %s", req.UserMessage)
-	return &pb.SetUserMessageResponse{DiffUserData: map[string]*pb.DiffData{}}, nil
+	log.Printf("[UserService] SetUserMessage: %s", req.Message)
+	return &pb.SetUserMessageResponse{DiffUserData: mock.EmptyDiff()}, nil
 }
 
 func (s *UserServiceServer) SetUserFavoriteCostumeId(ctx context.Context, req *pb.SetUserFavoriteCostumeIdRequest) (*pb.SetUserFavoriteCostumeIdResponse, error) {
 	log.Printf("[UserService] SetUserFavoriteCostumeId: %d", req.FavoriteCostumeId)
-	return &pb.SetUserFavoriteCostumeIdResponse{DiffUserData: map[string]*pb.DiffData{}}, nil
+	return &pb.SetUserFavoriteCostumeIdResponse{DiffUserData: mock.EmptyDiff()}, nil
 }
 
 func (s *UserServiceServer) GetUserProfile(ctx context.Context, req *pb.GetUserProfileRequest) (*pb.GetUserProfileResponse, error) {
-	log.Printf("[UserService] GetUserProfile: userId=%d", req.UserId)
-	return &pb.GetUserProfileResponse{DiffUserData: map[string]*pb.DiffData{}}, nil
+	log.Printf("[UserService] GetUserProfile: playerId=%d", req.PlayerId)
+	return &pb.GetUserProfileResponse{DiffUserData: mock.EmptyDiff()}, nil
 }
 
 func (s *UserServiceServer) SetBirthYearMonth(ctx context.Context, req *pb.SetBirthYearMonthRequest) (*pb.SetBirthYearMonthResponse, error) {
 	log.Printf("[UserService] SetBirthYearMonth: %d/%d", req.BirthYear, req.BirthMonth)
-	return &pb.SetBirthYearMonthResponse{DiffUserData: map[string]*pb.DiffData{}}, nil
+	return &pb.SetBirthYearMonthResponse{DiffUserData: mock.EmptyDiff()}, nil
 }
 
 func (s *UserServiceServer) GetBirthYearMonth(ctx context.Context, _ *emptypb.Empty) (*pb.GetBirthYearMonthResponse, error) {
-	return &pb.GetBirthYearMonthResponse{BirthYear: 2000, BirthMonth: 1}, nil
+	return &pb.GetBirthYearMonthResponse{BirthYear: mock.DefaultBirthYear, BirthMonth: mock.DefaultBirthMonth, DiffUserData: mock.EmptyDiff()}, nil
 }
 
 func (s *UserServiceServer) GetChargeMoney(ctx context.Context, _ *emptypb.Empty) (*pb.GetChargeMoneyResponse, error) {
-	return &pb.GetChargeMoneyResponse{DiffUserData: map[string]*pb.DiffData{}}, nil
+	return &pb.GetChargeMoneyResponse{ChargeMoneyThisMonth: mock.DefaultChargeMoneyThisMonth, DiffUserData: mock.EmptyDiff()}, nil
 }
 
 func (s *UserServiceServer) SetUserSetting(ctx context.Context, req *pb.SetUserSettingRequest) (*pb.SetUserSettingResponse, error) {
-	log.Printf("[UserService] SetUserSetting: key=%d val=%d", req.SettingKey, req.SettingValue)
-	return &pb.SetUserSettingResponse{DiffUserData: map[string]*pb.DiffData{}}, nil
+	log.Printf("[UserService] SetUserSetting: isNotifyPurchaseAlert=%v", req.IsNotifyPurchaseAlert)
+	return &pb.SetUserSettingResponse{DiffUserData: mock.EmptyDiff()}, nil
 }
 
 func (s *UserServiceServer) GetAndroidArgs(ctx context.Context, req *pb.GetAndroidArgsRequest) (*pb.GetAndroidArgsResponse, error) {
-	return &pb.GetAndroidArgsResponse{Result: ""}, nil
+	return &pb.GetAndroidArgsResponse{Nonce: "Mama", ApiKey: "1234567890", DiffUserData: mock.EmptyDiff()}, nil
 }
 
 func (s *UserServiceServer) GetBackupToken(ctx context.Context, req *pb.GetBackupTokenRequest) (*pb.GetBackupTokenResponse, error) {
-	return &pb.GetBackupTokenResponse{Token: "backup-token"}, nil
+	return &pb.GetBackupTokenResponse{BackupToken: mock.DefaultBackupToken, DiffUserData: mock.EmptyDiff()}, nil
 }
 
 func (s *UserServiceServer) CheckTransferSetting(ctx context.Context, _ *emptypb.Empty) (*pb.CheckTransferSettingResponse, error) {
-	return &pb.CheckTransferSettingResponse{IsSet: false}, nil
+	return &pb.CheckTransferSettingResponse{DiffUserData: mock.EmptyDiff()}, nil
 }
 
 func (s *UserServiceServer) GetUserGamePlayNote(ctx context.Context, req *pb.GetUserGamePlayNoteRequest) (*pb.GetUserGamePlayNoteResponse, error) {
-	return &pb.GetUserGamePlayNoteResponse{DiffUserData: map[string]*pb.DiffData{}}, nil
+	return &pb.GetUserGamePlayNoteResponse{DiffUserData: mock.EmptyDiff()}, nil
 }

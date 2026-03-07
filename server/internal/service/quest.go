@@ -7,6 +7,8 @@ import (
 	"time"
 
 	pb "lunar-tear/server/gen/proto"
+	"lunar-tear/server/internal/mock"
+
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -36,14 +38,14 @@ func (s *QuestServiceServer) UpdateMainFlowSceneProgress(ctx context.Context, re
 func (s *QuestServiceServer) UpdateReplayFlowSceneProgress(ctx context.Context, req *pb.UpdateReplayFlowSceneProgressRequest) (*pb.UpdateReplayFlowSceneProgressResponse, error) {
 	log.Printf("[QuestService] UpdateReplayFlowSceneProgress: questSceneId=%d", req.QuestSceneId)
 	return &pb.UpdateReplayFlowSceneProgressResponse{
-		DiffUserData: map[string]*pb.DiffData{},
+		DiffUserData: mock.EmptyDiff(),
 	}, nil
 }
 
 func (s *QuestServiceServer) UpdateMainQuestSceneProgress(ctx context.Context, req *pb.UpdateMainQuestSceneProgressRequest) (*pb.UpdateMainQuestSceneProgressResponse, error) {
 	log.Printf("[QuestService] UpdateMainQuestSceneProgress: questSceneId=%d", req.QuestSceneId)
 	return &pb.UpdateMainQuestSceneProgressResponse{
-		DiffUserData: map[string]*pb.DiffData{},
+		DiffUserData: mock.EmptyDiff(),
 	}, nil
 }
 
@@ -90,14 +92,14 @@ func (s *QuestServiceServer) FinishMainQuest(ctx context.Context, req *pb.Finish
 func (s *QuestServiceServer) FinishAutoOrbit(ctx context.Context, req *emptypb.Empty) (*pb.FinishAutoOrbitResponse, error) {
 	log.Printf("[QuestService] FinishAutoOrbit")
 	return &pb.FinishAutoOrbitResponse{
-		DiffUserData: map[string]*pb.DiffData{},
+		DiffUserData: mock.EmptyDiff(),
 	}, nil
 }
 
 func (s *QuestServiceServer) SetQuestSceneChoice(ctx context.Context, req *pb.SetQuestSceneChoiceRequest) (*pb.SetQuestSceneChoiceResponse, error) {
-	log.Printf("[QuestService] SetQuestSceneChoice: questSceneId=%d choiceEffectId=%d",
-		req.QuestSceneId, req.QuestSceneChoiceEffectId)
+	log.Printf("[QuestService] SetQuestSceneChoice: questSceneId=%d choiceNumber=%d",
+		req.QuestSceneId, req.ChoiceNumber)
 	return &pb.SetQuestSceneChoiceResponse{
-		DiffUserData: map[string]*pb.DiffData{},
+		DiffUserData: mock.EmptyDiff(),
 	}, nil
 }

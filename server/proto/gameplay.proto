@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.GamePlay";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/gacha.proto";
+import "proto/data.proto";
+
+package apb.api.gameplay;
+
+service GameplayService {
+	rpc CheckBeforeGamePlay (CheckBeforeGamePlayRequest) returns (CheckBeforeGamePlayResponse);
+}
+
+message CheckBeforeGamePlayRequest {
+	string tr = 1;
+	int32 voiceClientSystemLanguageTypeId = 2;
+	int32 textClientSystemLanguageTypeId = 3;
+}
+
+message CheckBeforeGamePlayResponse {
+	bool isExistUnreadPop = 1;
+	repeated apb.api.gacha.MenuGachaBadgeInfo menuGachaBadgeInfo = 2;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}

@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+option csharp_namespace = "Art.Framework.ApiNetwork.Grpc.Api.Banner";
+option go_package = "lunar-tear/server/gen/proto;proto";
+
+import "proto/mission.proto";
+import "proto/data.proto";
+
+package apb.api.banner;
+
+service BannerService {
+	rpc GetMamaBanner (GetMamaBannerRequest) returns (GetMamaBannerResponse);
+}
+
+message GetMamaBannerRequest {
+	apb.api.mission.CageMeasurableValues cageMeasurableValues = 50;
+}
+
+message GetMamaBannerResponse {
+	repeated GachaBanner termLimitedGacha = 2;
+	GachaBanner latestChapterGacha = 3;
+	bool isExistUnreadPop = 4;
+	map<string, apb.api.data.DiffData> diffUserData = 99;
+}
+
+message GachaBanner {
+	int32 gachaLabelType = 1;
+	string gachaAssetName = 2;
+	int32 gachaId = 3;
+}

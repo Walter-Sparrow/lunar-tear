@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./build",
+    "rootDir": ".",
+    "resolveJsonModule": true,
+    "types": ["frida-gum"],
+    "noEmit": false
+  },
+  "include": ["*.ts", "src/hooks_server.ts", "src/globals.d.ts"],
+  "exclude": ["node_modules", "build"]
+}
