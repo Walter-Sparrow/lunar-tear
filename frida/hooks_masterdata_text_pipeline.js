@@ -103,6 +103,24 @@ function readNamedErrorSummary(err) {
   }
 }
 
+function readBoxedInt32(obj, fieldOffset) {
+  try {
+    if (!obj || obj.isNull()) return null;
+    return obj.add(0x10 + fieldOffset).readS32();
+  } catch (error) {
+    return null;
+  }
+}
+
+function readBoxedPointer(obj, fieldOffset) {
+  try {
+    if (!obj || obj.isNull()) return ptr(0);
+    return obj.add(0x10 + fieldOffset).readPointer();
+  } catch (error) {
+    return ptr(0);
+  }
+}
+
 function logDivider(label) {
   console.log(`\n==== ${label} ====`);
 }
@@ -263,6 +281,22 @@ awaitLibil2cpp(() => {
     },
   });
 
+  hook('UserDataGet.<RequestAsync>b__11_1', 0x361ae60, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] <RequestAsync>b__11_1 self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('UserDataGet.<RequestAsync>b__11_3', 0x361b318, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] <RequestAsync>b__11_3 self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])}`,
+      );
+    },
+  });
+
   hook('GetUserDataNameV2Api.RequestAsyncMethod', 0x3a461bc, {
     onEnter() {
       console.log('[UserAPI] GetUserDataNameV2Api.RequestAsyncMethod');
@@ -299,6 +333,58 @@ awaitLibil2cpp(() => {
     onLeave(retval) {
       console.log(
         `[UserRPC] UserDataGetResponse.get_UserDataJson self=${pointerSummary(this.self)} -> ${pointerSummary(retval)}`,
+      );
+    },
+  });
+
+  hook('GetUserDataApi.<RequestAsyncMethod>d__1.MoveNext', 0x3a45adc, {
+    onEnter(args) {
+      this.self = args[0];
+      const state = readBoxedInt32(args[0], 0x0);
+      console.log(
+        `[UserAPI] <RequestAsyncMethod>d__1.MoveNext self=${pointerSummary(args[0])} state=${state}`,
+      );
+    },
+    onLeave() {
+      const state = readBoxedInt32(this.self, 0x0);
+      console.log(
+        `[UserAPI] <RequestAsyncMethod>d__1.MoveNext completed self=${pointerSummary(this.self)} state=${state}`,
+      );
+    },
+  });
+
+  hook('GetUserDataApi.<RequestAsyncMethod>d__0.MoveNext', 0x3a456b8, {
+    onEnter(args) {
+      this.self = args[0];
+      const state = readBoxedInt32(args[0], 0x0);
+      console.log(
+        `[UserAPI] <RequestAsyncMethod>d__0.MoveNext self=${pointerSummary(args[0])} state=${state}`,
+      );
+    },
+    onLeave() {
+      const state = readBoxedInt32(this.self, 0x0);
+      console.log(
+        `[UserAPI] <RequestAsyncMethod>d__0.MoveNext completed self=${pointerSummary(this.self)} state=${state}`,
+      );
+    },
+  });
+
+  hook('UserDataGet.<RequestAsync>d__11.MoveNext', 0x361b624, {
+    onEnter(args) {
+      this.self = args[0];
+      const state = readBoxedInt32(args[0], 0x0);
+      const displayClass = readBoxedPointer(args[0], 0x28);
+      const databaseBuilder = readBoxedPointer(args[0], 0x38);
+      console.log(
+        `[UserDB] <RequestAsync>d__11.MoveNext self=${pointerSummary(args[0])} state=${state} displayClass=${pointerSummary(displayClass)} databaseBuilder=${pointerSummary(databaseBuilder)}`,
+      );
+    },
+    onLeave() {
+      const state = readBoxedInt32(this.self, 0x0);
+      const displayClass = readBoxedPointer(this.self, 0x28);
+      const databaseBuilder = readBoxedPointer(this.self, 0x38);
+      console.log(
+        `[UserDB] <RequestAsync>d__11.MoveNext completed self=${pointerSummary(this.self)} state=${state} displayClass=${pointerSummary(displayClass)} databaseBuilder=${pointerSummary(databaseBuilder)}`,
       );
     },
   });

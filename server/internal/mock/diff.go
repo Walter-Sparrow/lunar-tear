@@ -15,7 +15,7 @@ func EmptyDiff() map[string]*pb.DiffData {
 // Tables and JSON shapes match userdata.DefaultUserDataJSON so the client sees
 // a valid user, user_setting, and main-quest state (e.g. after Auth or GameStart).
 func BaselineDiff(userID int64) map[string]*pb.DiffData {
-	tables := userdata.DefaultUserDataJSON(userID)
+	tables := userdata.DefaultUserDataJSONClientTables(userID)
 	out := make(map[string]*pb.DiffData, len(tables))
 	for table, jsonStr := range tables {
 		out[table] = &pb.DiffData{UpdateRecordsJson: jsonStr}

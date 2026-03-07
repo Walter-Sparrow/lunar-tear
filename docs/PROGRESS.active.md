@@ -19,37 +19,45 @@ Minimal client patches, server-first implementation, and a clean path to the hom
   - `GetLatestMasterDataVersion`
   - `GetUserDataNameV2`
   - `GetUserData`
-- Server-side `IUser` JSON generation is now typed and marshaled instead of hand-built.
-- Previous crashes seen around user DB append were hook-induced; removing the risky append hook stopped that native crash.
+- `GetUserDataAsync` returns a real `UserDataGetResponse` on the client.
+- `GetUserDataApi.RequestAsyncMethod(list)` resumes and completes on the client.
+- The active `GetUserData` path is plain JSON object arrays, not the older base64+MessagePack experiment.
+- Server-side `IUser` JSON generation is now typed instead of hand-built.
+- Server-side user identity is now stable across `RegisterUser`, `Auth`, and `GetUserData`.
+- Baseline diffs and quest diffs now use client table names like `IUser*` instead of snake_case keys.
+- Previous crashes seen around user DB append were hook-induced; risky append-helper hooks should be treated as suspect first.
 
 ## Current Blocker
-The client still stalls after `GetUserData` returns, but before user DB build/publication starts.
+The client still stalls inside the client-side `UserDataGet.RequestAsync` flow after `GetUserDataApi.RequestAsyncMethod(list)` finishes, but before user DB build/publication becomes visible.
 
 Observed boundary:
 - Seen on client: `UserDataGet.RequestAsync`
 - Seen on client: `GetUserDataNameV2Api.RequestAsyncMethod`
 - Seen on client: `GetUserDataApi.RequestAsyncMethod(list)`
+- Seen on client: `GetUserDataApi.<RequestAsyncMethod>d__1.MoveNext` resume/complete
 - Seen on server: `GetUserData` request arrives and response is sent
+- Seen on client in earlier targeted tracing: the first table application reached `IUser`
 - Not yet seen on client: user DB build path (`DatabaseBuilderBase.Build`, `DarkUserMemoryDatabase`, `DatabaseDefine.set_User`)
 
 That makes the likely fault window:
-- the await/result handoff right after `darkClient.DataService.GetUserDataAsync(...)`, or
-- access/deserialization of `userData.UserDataJson`
+- inside the compiler-generated `UserDataGet.RequestAsync` post-fetch pipeline
+- likely around its internal fan-out / callback / worker scheduling path, not the gRPC transport itself
+- not ruled in yet: a bad first applied user table such as `IUser`
 
 ## Current Instrumentation Strategy
 Prefer narrow, low-risk hooks only:
 - gRPC call entry/return
-- response accessor entry/return
+- specific async state-machine checkpoints around `UserDataGet` / `GetUserDataApi`
 - database publication checkpoints
-- error dialog path
+- nearby compiler-generated callbacks for `UserDataGet`
 
 Avoid:
 - broad asset/text spam
-- aggressive async `MoveNext` instrumentation
-- append/helper hooks that can perturb execution
+- broad generic awaiter hooks that mix unrelated tasks
+- append/helper hooks that can perturb execution or crash the process
 
 ## Immediate Next Checks
-- Confirm `DataServiceClient.GetUserDataAsync` returns on the client side.
-- Confirm `UserDataGetResponse.get_UserDataJson` is actually reached.
-- If the getter is reached, narrow further to the first JSON deserialization boundary.
-- If the getter is not reached, focus on the post-await continuation path instead of server payload shape.
+- Determine whether `UserDataGet.<RequestAsync>b__11_1(object _)` or `UserDataGet.<RequestAsync>b__11_3(object _)` fires.
+- Determine whether the user DB worker lambda `UserDataGet.<RequestAsync>b__0()` is ever entered without risky append hooks.
+- If the worker starts, trace forward to `DatabaseBuilderBase.Build`, `DarkUserMemoryDatabase.ctor`, and `DatabaseDefine.set_User`.
+- If the worker still never starts, keep focus on the internal `UserDataGet.RequestAsync` callback/fan-out path rather than server payload transport.

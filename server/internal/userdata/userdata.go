@@ -1,10 +1,9 @@
-// Package userdata handles encoding of user data entities in the format
-// expected by the NieR Reincarnation client: JSON arrays of base64-encoded
-// MessagePack byte arrays.
+// Package userdata builds user data payloads for the NieR Reincarnation client.
 //
-// The client deserializes each table's value as List<byte[]> (C#), where
-// each byte[] is a MessagePack-serialized entity using array layout with
-// integer keys (matching MessagePack-CSharp's [MessagePackObject] + [Key(n)]).
+// Today the active path is plain JSON arrays of objects, which the client-side
+// DarkUserDataDatabaseBuilderAppendHelper turns into typed entities via
+// JObject.ToObject<EntityIUser*>. The older base64+MessagePack helpers are kept
+// around for experiments, but are not the default path.
 package userdata
 
 import (
@@ -82,24 +81,24 @@ type EntityIUserMainQuestMainFlowStatus struct {
 	LatestVersion           int64    // Key(5)
 }
 
-// EntityIUserMainQuestProgressStatus mirrors EntityIUserMainQuestProgressStatus [Key(0..5)].
+// EntityIUserMainQuestProgressStatus mirrors EntityIUserMainQuestProgressStatus [Key(0..4)].
 // This table is used by ActivePlayerToEntityPlayingMainQuestStatus (0x2AB4A48).
 type EntityIUserMainQuestProgressStatus struct {
-	_msgpack            struct{} `msgpack:",asArray"`
-	UserId              int64    // Key(0)
-	CurrentQuestSceneId int32    // Key(1)
-	HeadQuestSceneId    int32    // Key(2)
-	CurrentQuestFlowType int32   // Key(3) // 1 = MAIN_FLOW
-	LatestVersion       int64    // Key(4)
+	_msgpack             struct{} `msgpack:",asArray"`
+	UserId               int64    // Key(0)
+	CurrentQuestSceneId  int32    // Key(1)
+	HeadQuestSceneId     int32    // Key(2)
+	CurrentQuestFlowType int32    // Key(3) // 1 = MAIN_FLOW
+	LatestVersion        int64    // Key(4)
 }
 
 // EntityIUserMainQuestSeasonRoute mirrors EntityIUserMainQuestSeasonRoute [Key(0..3)].
 type EntityIUserMainQuestSeasonRoute struct {
-	_msgpack           struct{} `msgpack:",asArray"`
-	UserId             int64    // Key(0)
-	MainQuestSeasonId  int32    // Key(1)
-	MainQuestRouteId   int32    // Key(2)
-	LatestVersion      int64    // Key(3)
+	_msgpack          struct{} `msgpack:",asArray"`
+	UserId            int64    // Key(0)
+	MainQuestSeasonId int32    // Key(1)
+	MainQuestRouteId  int32    // Key(2)
+	LatestVersion     int64    // Key(3)
 }
 
 // EncodeRecords serializes a slice of entities to the client-expected format:
@@ -200,11 +199,25 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 	})
 
 	return map[string]string{
-		"user":                        userJSON,
-		"user_setting":                userSettingJSON,
-		"user_main_quest_flow_status": mainQuestFlowJSON,
+		"user":                             userJSON,
+		"user_setting":                     userSettingJSON,
+		"user_main_quest_flow_status":      mainQuestFlowJSON,
 		"user_main_quest_main_flow_status": mainQuestMainFlowJSON,
 		"user_main_quest_progress_status":  mainQuestProgressJSON,
 		"user_main_quest_season_route":     mainQuestSeasonRouteJSON,
+	}
+}
+
+// DefaultUserDataJSONClientTables returns the same data as DefaultUserDataJSON,
+// but keyed by the IUser* names used by the client append/diff helpers.
+func DefaultUserDataJSONClientTables(userID int64) map[string]string {
+	defaultsSnake := DefaultUserDataJSON(userID)
+	return map[string]string{
+		"IUser":                        defaultsSnake["user"],
+		"IUserSetting":                 defaultsSnake["user_setting"],
+		"IUserMainQuestFlowStatus":     defaultsSnake["user_main_quest_flow_status"],
+		"IUserMainQuestMainFlowStatus": defaultsSnake["user_main_quest_main_flow_status"],
+		"IUserMainQuestProgressStatus": defaultsSnake["user_main_quest_progress_status"],
+		"IUserMainQuestSeasonRoute":    defaultsSnake["user_main_quest_season_route"],
 	}
 }

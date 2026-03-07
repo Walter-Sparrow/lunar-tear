@@ -27,7 +27,7 @@ func (s *QuestServiceServer) UpdateMainFlowSceneProgress(ctx context.Context, re
 		req.QuestSceneId, req.QuestSceneId)
 
 	diff := map[string]*pb.DiffData{
-		"user_main_quest_main_flow_status": {UpdateRecordsJson: flowJSON},
+		"IUserMainQuestMainFlowStatus": {UpdateRecordsJson: flowJSON},
 	}
 
 	return &pb.UpdateMainFlowSceneProgressResponse{
@@ -58,7 +58,7 @@ func (s *QuestServiceServer) StartMainQuest(ctx context.Context, req *pb.StartMa
 		req.QuestId, now)
 
 	diff := map[string]*pb.DiffData{
-		"user_quest": {UpdateRecordsJson: questJSON},
+		"IUserQuest": {UpdateRecordsJson: questJSON},
 	}
 
 	return &pb.StartMainQuestResponse{
@@ -78,11 +78,11 @@ func (s *QuestServiceServer) FinishMainQuest(ctx context.Context, req *pb.Finish
 	flowJSON := `[{"UserId":1001,"CurrentMainQuestRouteId":1,"CurrentQuestSceneId":3,"HeadQuestSceneId":3,"IsReachedLastQuestScene":false,"LatestVersion":0}]`
 
 	diff := map[string]*pb.DiffData{
-		"user_quest":                       {UpdateRecordsJson: questJSON},
-		"user_main_quest_main_flow_status": {UpdateRecordsJson: flowJSON},
+		"IUserQuest":                   {UpdateRecordsJson: questJSON},
+		"IUserMainQuestMainFlowStatus": {UpdateRecordsJson: flowJSON},
 	}
 
-	log.Printf("[QuestService] FinishMainQuest diff: user_quest=%s flow_status=%s", questJSON, flowJSON)
+	log.Printf("[QuestService] FinishMainQuest diff: IUserQuest=%s IUserMainQuestMainFlowStatus=%s", questJSON, flowJSON)
 
 	return &pb.FinishMainQuestResponse{
 		DiffUserData: diff,

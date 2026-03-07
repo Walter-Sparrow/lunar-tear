@@ -38,19 +38,8 @@ func (s *DataServiceServer) GetUserDataNameV2(ctx context.Context, _ *emptypb.Em
 func (s *DataServiceServer) GetUserData(ctx context.Context, req *pb.UserDataGetRequest) (*pb.UserDataGetResponse, error) {
 	log.Printf("[DataService] GetUserData: tables=%v", req.TableName)
 
-	// The game expects table keys like "IUser", not snake_case filenames.
-	// We keep our internal defaults in snake_case and map them to IUser* keys.
-	defaultsSnake := userdata.DefaultUserDataJSON(mock.DefaultUserID)
-	defaults := map[string]string{
-		"IUser":                     defaultsSnake["user"],
-		"IUserSetting":              defaultsSnake["user_setting"],
-		"IUserMainQuestFlowStatus":  defaultsSnake["user_main_quest_flow_status"],
-		"IUserMainQuestMainFlowStatus": defaultsSnake["user_main_quest_main_flow_status"],
-		"IUserMainQuestProgressStatus": defaultsSnake["user_main_quest_progress_status"],
-		"IUserMainQuestSeasonRoute": defaultsSnake["user_main_quest_season_route"],
-		// Optional / usually empty for fresh user
-		"IUserQuest": "[]",
-	}
+	defaults := userdata.DefaultUserDataJSONClientTables(mock.DefaultUserID)
+	defaults["IUserQuest"] = "[]"
 	result := make(map[string]string)
 
 	for _, table := range req.TableName {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync/atomic"
 	"time"
 
 	pb "lunar-tear/server/gen/proto"
@@ -17,17 +16,14 @@ import (
 
 type UserServiceServer struct {
 	pb.UnimplementedUserServiceServer
-	nextUserID atomic.Int64
 }
 
 func NewUserServiceServer() *UserServiceServer {
-	s := &UserServiceServer{}
-	s.nextUserID.Store(1000)
-	return s
+	return &UserServiceServer{}
 }
 
 func (s *UserServiceServer) RegisterUser(ctx context.Context, req *pb.RegisterUserRequest) (*pb.RegisterUserResponse, error) {
-	userID := s.nextUserID.Add(1)
+	userID := mock.DefaultUserID
 	log.Printf("[UserService] RegisterUser: uuid=%s terminalId=%s -> userId=%d", req.Uuid, req.TerminalId, userID)
 
 	return &pb.RegisterUserResponse{
