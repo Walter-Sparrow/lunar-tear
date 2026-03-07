@@ -121,6 +121,16 @@ function readBoxedPointer(obj, fieldOffset) {
   }
 }
 
+function readClientErrorSummary(err) {
+  try {
+    if (!err || err.isNull()) return '<null>';
+    const screenTransitionType = err.add(0x10).readS32();
+    return `screenTransitionType=${screenTransitionType} ptr=${err}`;
+  } catch (error) {
+    return `<client-error-err ${error}>`;
+  }
+}
+
 function logDivider(label) {
   console.log(`\n==== ${label} ====`);
 }
@@ -272,6 +282,17 @@ awaitLibil2cpp(() => {
     },
   });
 
+  hook('CalculatorNetworking.GetUserDataGetDataSource', 0x2e1bd4c, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] GetUserDataGetDataSource onSuccess=${pointerSummary(args[0])} onError=${pointerSummary(args[1])}`,
+      );
+    },
+    onLeave(retval) {
+      console.log(`[UserDB] GetUserDataGetDataSource -> ${pointerSummary(retval)}`);
+    },
+  });
+
   hook('UserDataGet.<RequestAsync>b__0', 0x361b5b0, {
     onEnter(args) {
       console.log(`[UserDB] <RequestAsync>b__0 self=${pointerSummary(args[0])}`);
@@ -293,6 +314,36 @@ awaitLibil2cpp(() => {
     onEnter(args) {
       console.log(
         `[UserDB] <RequestAsync>b__11_3 self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('UserDataGet.HandleError.Invoke', 0x361b328, {
+    onEnter(args) {
+      console.log(`[UserDB] HandleError.Invoke self=${pointerSummary(args[0])}`);
+    },
+  });
+
+  hook('UserDataGet.HandleSuccess.Invoke', 0x361af84, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] HandleSuccess.Invoke self=${pointerSummary(args[0])} updatedTableNames=${pointerSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('DarkServerAPI<object, object>.OnErrorRequest', 0x3f7a170, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] DarkServerAPI.OnErrorRequest self=${pointerSummary(args[0])} exception=${pointerSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('DarkServerAPI.HandleError<object, object>.Invoke', 0x3f795fc, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] DarkServerAPI.HandleError.Invoke self=${pointerSummary(args[0])} error=${readClientErrorSummary(args[1])}`,
       );
     },
   });

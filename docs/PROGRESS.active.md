@@ -26,9 +26,11 @@ Minimal client patches, server-first implementation, and a clean path to the hom
 - Server-side user identity is now stable across `RegisterUser`, `Auth`, and `GetUserData`.
 - Baseline diffs and quest diffs now use client table names like `IUser*` instead of snake_case keys.
 - Previous crashes seen around user DB append were hook-induced; risky append-helper hooks should be treated as suspect first.
+- New tracing shows `UserDataGet.<RequestAsync>b__11_3` and `UserDataGet.HandleError.Invoke` fire after the fetch path completes.
+- New tracing does not show `DarkServerAPI.OnErrorRequest`, so this does not currently look like the generic API error-conversion path.
 
 ## Current Blocker
-The client still stalls inside the client-side `UserDataGet.RequestAsync` flow after `GetUserDataApi.RequestAsyncMethod(list)` finishes, but before user DB build/publication becomes visible.
+The client still stalls inside the client-side `UserDataGet.RequestAsync` flow after `GetUserDataApi.RequestAsyncMethod(list)` finishes. The flow now appears to take `UserDataGet`'s own error callback path before user DB build/publication becomes visible.
 
 Observed boundary:
 - Seen on client: `UserDataGet.RequestAsync`
@@ -36,13 +38,16 @@ Observed boundary:
 - Seen on client: `GetUserDataApi.RequestAsyncMethod(list)`
 - Seen on client: `GetUserDataApi.<RequestAsyncMethod>d__1.MoveNext` resume/complete
 - Seen on server: `GetUserData` request arrives and response is sent
-- Seen on client in earlier targeted tracing: the first table application reached `IUser`
+- Seen on client: `UserDataGet.<RequestAsync>b__11_3`
+- Seen on client: `UserDataGet.HandleError.Invoke`
+- Not seen on client: `UserDataGet.HandleSuccess.Invoke`
 - Not yet seen on client: user DB build path (`DatabaseBuilderBase.Build`, `DarkUserMemoryDatabase`, `DatabaseDefine.set_User`)
 
 That makes the likely fault window:
 - inside the compiler-generated `UserDataGet.RequestAsync` post-fetch pipeline
 - likely around its internal fan-out / callback / worker scheduling path, not the gRPC transport itself
-- not ruled in yet: a bad first applied user table such as `IUser`
+- likely using `UserDataGet`'s own error handling rather than the generic `DarkServerAPI.OnErrorRequest` path
+- not ruled in yet: a client-side validation failure on fetched user data before or during worker scheduling
 
 ## Current Instrumentation Strategy
 Prefer narrow, low-risk hooks only:
@@ -50,6 +55,7 @@ Prefer narrow, low-risk hooks only:
 - specific async state-machine checkpoints around `UserDataGet` / `GetUserDataApi`
 - database publication checkpoints
 - nearby compiler-generated callbacks for `UserDataGet`
+- `UserDataGet` success/error delegate invocation
 
 Avoid:
 - broad asset/text spam
@@ -57,7 +63,9 @@ Avoid:
 - append/helper hooks that can perturb execution or crash the process
 
 ## Immediate Next Checks
-- Determine whether `UserDataGet.<RequestAsync>b__11_1(object _)` or `UserDataGet.<RequestAsync>b__11_3(object _)` fires.
+- Determine whether `CalculatorNetworking.GetUserDataGetDataSource(...)` shows the expected subscriber wiring.
+- Determine whether `UserDataGet.HandleSuccess.Invoke` ever fires in a healthy branch.
+- Keep watching `UserDataGet.<RequestAsync>b__11_1(object _)` versus `UserDataGet.<RequestAsync>b__11_3(object _)`.
 - Determine whether the user DB worker lambda `UserDataGet.<RequestAsync>b__0()` is ever entered without risky append hooks.
 - If the worker starts, trace forward to `DatabaseBuilderBase.Build`, `DarkUserMemoryDatabase.ctor`, and `DatabaseDefine.set_User`.
 - If the worker still never starts, keep focus on the internal `UserDataGet.RequestAsync` callback/fan-out path rather than server payload transport.
