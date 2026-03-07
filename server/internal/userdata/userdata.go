@@ -101,6 +101,116 @@ type EntityIUserMainQuestSeasonRoute struct {
 	LatestVersion     int64    // Key(3)
 }
 
+// EntityIUserStatus mirrors EntityIUserStatus [Key(0..5)].
+type EntityIUserStatus struct {
+	_msgpack              struct{} `msgpack:",asArray"`
+	UserId                int64    // Key(0)
+	Level                 int32    // Key(1)
+	Exp                   int32    // Key(2)
+	StaminaMilliValue     int32    // Key(3)
+	StaminaUpdateDatetime int64    // Key(4)
+	LatestVersion         int64    // Key(5)
+}
+
+// EntityIUserGem mirrors EntityIUserGem [Key(0..2)].
+type EntityIUserGem struct {
+	_msgpack struct{} `msgpack:",asArray"`
+	UserId   int64    // Key(0)
+	PaidGem  int32    // Key(1)
+	FreeGem  int32    // Key(2)
+}
+
+// EntityIUserProfile mirrors EntityIUserProfile [Key(0..7)].
+type EntityIUserProfile struct {
+	_msgpack                        struct{} `msgpack:",asArray"`
+	UserId                          int64    // Key(0)
+	Name                            string   // Key(1)
+	NameUpdateDatetime              int64    // Key(2)
+	Message                         string   // Key(3)
+	MessageUpdateDatetime           int64    // Key(4)
+	FavoriteCostumeId               int32    // Key(5)
+	FavoriteCostumeIdUpdateDatetime int64    // Key(6)
+	LatestVersion                   int64    // Key(7)
+}
+
+// EntityIUserCharacter mirrors EntityIUserCharacter [Key(0..4)].
+type EntityIUserCharacter struct {
+	_msgpack      struct{} `msgpack:",asArray"`
+	UserId        int64    // Key(0)
+	CharacterId   int32    // Key(1)
+	Level         int32    // Key(2)
+	Exp           int32    // Key(3)
+	LatestVersion int64    // Key(4)
+}
+
+// EntityIUserCostume mirrors EntityIUserCostume [Key(0..9)].
+type EntityIUserCostume struct {
+	_msgpack            struct{} `msgpack:",asArray"`
+	UserId              int64    // Key(0)
+	UserCostumeUuid     string   // Key(1)
+	CostumeId           int32    // Key(2)
+	LimitBreakCount     int32    // Key(3)
+	Level               int32    // Key(4)
+	Exp                 int32    // Key(5)
+	HeadupDisplayViewId int32    // Key(6)
+	AcquisitionDatetime int64    // Key(7)
+	AwakenCount         int32    // Key(8)
+	LatestVersion       int64    // Key(9)
+}
+
+// EntityIUserWeapon mirrors EntityIUserWeapon [Key(0..8)].
+type EntityIUserWeapon struct {
+	_msgpack            struct{} `msgpack:",asArray"`
+	UserId              int64    // Key(0)
+	UserWeaponUuid      string   // Key(1)
+	WeaponId            int32    // Key(2)
+	Level               int32    // Key(3)
+	Exp                 int32    // Key(4)
+	LimitBreakCount     int32    // Key(5)
+	IsProtected         bool     // Key(6)
+	AcquisitionDatetime int64    // Key(7)
+	LatestVersion       int64    // Key(8)
+}
+
+// EntityIUserCompanion mirrors EntityIUserCompanion [Key(0..6)].
+type EntityIUserCompanion struct {
+	_msgpack            struct{} `msgpack:",asArray"`
+	UserId              int64    // Key(0)
+	UserCompanionUuid   string   // Key(1)
+	CompanionId         int32    // Key(2)
+	HeadupDisplayViewId int32    // Key(3)
+	Level               int32    // Key(4)
+	AcquisitionDatetime int64    // Key(5)
+	LatestVersion       int64    // Key(6)
+}
+
+// EntityIUserDeckCharacter mirrors EntityIUserDeckCharacter [Key(0..7)].
+type EntityIUserDeckCharacter struct {
+	_msgpack              struct{} `msgpack:",asArray"`
+	UserId                int64    // Key(0)
+	UserDeckCharacterUuid string   // Key(1)
+	UserCostumeUuid       string   // Key(2)
+	MainUserWeaponUuid    string   // Key(3)
+	UserCompanionUuid     string   // Key(4)
+	Power                 int32    // Key(5)
+	UserThoughtUuid       string   // Key(6)
+	LatestVersion         int64    // Key(7)
+}
+
+// EntityIUserDeck mirrors EntityIUserDeck [Key(0..8)].
+type EntityIUserDeck struct {
+	_msgpack                struct{} `msgpack:",asArray"`
+	UserId                  int64    // Key(0)
+	DeckType                int32    // Key(1)
+	UserDeckNumber          int32    // Key(2)
+	UserDeckCharacterUuid01 string   // Key(3)
+	UserDeckCharacterUuid02 string   // Key(4)
+	UserDeckCharacterUuid03 string   // Key(5)
+	Name                    string   // Key(6)
+	Power                   int32    // Key(7)
+	LatestVersion           int64    // Key(8)
+}
+
 // EncodeRecords serializes a slice of entities to the client-expected format:
 // a JSON array of base64-encoded MessagePack byte strings.
 func EncodeRecords(entities ...any) (string, error) {
@@ -156,6 +266,20 @@ func DefaultUserData(userID int64) map[string]string {
 // Verified: client accepts JSON format and parses it correctly.
 func DefaultUserDataJSON(userID int64) map[string]string {
 	now := time.Now().Unix()
+	acquiredAtMillis := now * 1000
+	const (
+		starterCharacterID = int32(1)
+		starterCostumeID   = int32(1)
+		starterWeaponID    = int32(1)
+		starterCompanionID = int32(1)
+		questDeckType      = int32(1)
+	)
+	const (
+		starterCostumeUUID       = "starter-costume-0001"
+		starterWeaponUUID        = "starter-weapon-0001"
+		starterCompanionUUID     = "starter-companion-0001"
+		starterDeckCharacterUUID = "starter-deck-character-0001"
+	)
 	userJSON, _ := encodeJSONRecords(&EntityIUser{
 		UserId:              userID,
 		PlayerId:            userID,
@@ -197,10 +321,102 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		MainQuestRouteId:  1,
 		LatestVersion:     0,
 	})
+	userStatusJSON, _ := encodeJSONRecords(&EntityIUserStatus{
+		UserId:                userID,
+		Level:                 1,
+		Exp:                   0,
+		StaminaMilliValue:     60000,
+		StaminaUpdateDatetime: now,
+		LatestVersion:         0,
+	})
+	userGemJSON, _ := encodeJSONRecords(&EntityIUserGem{
+		UserId:  userID,
+		PaidGem: 0,
+		FreeGem: 0,
+	})
+	userProfileJSON, _ := encodeJSONRecords(&EntityIUserProfile{
+		UserId:                          userID,
+		Name:                            "Lunar Tear",
+		NameUpdateDatetime:              now,
+		Message:                         "",
+		MessageUpdateDatetime:           now,
+		FavoriteCostumeId:               starterCostumeID,
+		FavoriteCostumeIdUpdateDatetime: now,
+		LatestVersion:                   0,
+	})
+	userCharacterJSON, _ := encodeJSONRecords(&EntityIUserCharacter{
+		UserId:        userID,
+		CharacterId:   starterCharacterID,
+		Level:         1,
+		Exp:           0,
+		LatestVersion: 0,
+	})
+	userCostumeJSON, _ := encodeJSONRecords(&EntityIUserCostume{
+		UserId:              userID,
+		UserCostumeUuid:     starterCostumeUUID,
+		CostumeId:           starterCostumeID,
+		LimitBreakCount:     0,
+		Level:               1,
+		Exp:                 0,
+		HeadupDisplayViewId: 0,
+		AcquisitionDatetime: acquiredAtMillis,
+		AwakenCount:         0,
+		LatestVersion:       0,
+	})
+	userWeaponJSON, _ := encodeJSONRecords(&EntityIUserWeapon{
+		UserId:              userID,
+		UserWeaponUuid:      starterWeaponUUID,
+		WeaponId:            starterWeaponID,
+		Level:               1,
+		Exp:                 0,
+		LimitBreakCount:     0,
+		IsProtected:         false,
+		AcquisitionDatetime: acquiredAtMillis,
+		LatestVersion:       0,
+	})
+	userCompanionJSON, _ := encodeJSONRecords(&EntityIUserCompanion{
+		UserId:              userID,
+		UserCompanionUuid:   starterCompanionUUID,
+		CompanionId:         starterCompanionID,
+		HeadupDisplayViewId: 0,
+		Level:               1,
+		AcquisitionDatetime: acquiredAtMillis,
+		LatestVersion:       0,
+	})
+	userDeckCharacterJSON, _ := encodeJSONRecords(&EntityIUserDeckCharacter{
+		UserId:                userID,
+		UserDeckCharacterUuid: starterDeckCharacterUUID,
+		UserCostumeUuid:       starterCostumeUUID,
+		MainUserWeaponUuid:    starterWeaponUUID,
+		UserCompanionUuid:     starterCompanionUUID,
+		Power:                 100,
+		UserThoughtUuid:       "",
+		LatestVersion:         0,
+	})
+	userDeckJSON, _ := encodeJSONRecords(&EntityIUserDeck{
+		UserId:                  userID,
+		DeckType:                questDeckType,
+		UserDeckNumber:          1,
+		UserDeckCharacterUuid01: starterDeckCharacterUUID,
+		UserDeckCharacterUuid02: "",
+		UserDeckCharacterUuid03: "",
+		Name:                    "Deck 1",
+		Power:                   100,
+		LatestVersion:           0,
+	})
 
 	return map[string]string{
 		"user":                             userJSON,
 		"user_setting":                     userSettingJSON,
+		"user_status":                      userStatusJSON,
+		"user_gem":                         userGemJSON,
+		"user_profile":                     userProfileJSON,
+		"user_character":                   userCharacterJSON,
+		"user_costume":                     userCostumeJSON,
+		"user_weapon":                      userWeaponJSON,
+		"user_companion":                   userCompanionJSON,
+		"user_deck_character":              userDeckCharacterJSON,
+		"user_deck":                        userDeckJSON,
 		"user_main_quest_flow_status":      mainQuestFlowJSON,
 		"user_main_quest_main_flow_status": mainQuestMainFlowJSON,
 		"user_main_quest_progress_status":  mainQuestProgressJSON,
@@ -215,6 +431,15 @@ func DefaultUserDataJSONClientTables(userID int64) map[string]string {
 	return map[string]string{
 		"IUser":                        defaultsSnake["user"],
 		"IUserSetting":                 defaultsSnake["user_setting"],
+		"IUserStatus":                  defaultsSnake["user_status"],
+		"IUserGem":                     defaultsSnake["user_gem"],
+		"IUserProfile":                 defaultsSnake["user_profile"],
+		"IUserCharacter":               defaultsSnake["user_character"],
+		"IUserCostume":                 defaultsSnake["user_costume"],
+		"IUserWeapon":                  defaultsSnake["user_weapon"],
+		"IUserCompanion":               defaultsSnake["user_companion"],
+		"IUserDeckCharacter":           defaultsSnake["user_deck_character"],
+		"IUserDeck":                    defaultsSnake["user_deck"],
 		"IUserMainQuestFlowStatus":     defaultsSnake["user_main_quest_flow_status"],
 		"IUserMainQuestMainFlowStatus": defaultsSnake["user_main_quest_main_flow_status"],
 		"IUserMainQuestProgressStatus": defaultsSnake["user_main_quest_progress_status"],
