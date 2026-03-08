@@ -5,6 +5,8 @@ import (
 	"lunar-tear/server/internal/userdata"
 )
 
+const startedDiffBisectGroup = "profileOnly"
+
 // EmptyDiff returns an empty DiffUserData map (no table updates).
 // Use when the RPC has nothing to sync.
 func EmptyDiff() map[string]*pb.DiffData {
@@ -38,7 +40,7 @@ func StartedDiff(userID int64) map[string]*pb.DiffData {
 // such as IUser out of the post-GameStart diff.
 func StartedMinimalDiff(userID int64) map[string]*pb.DiffData {
 	tables := userdata.DefaultUserDataJSONClientTables(userID)
-	selected := []string{
+	groupA := []string{
 		"IUserProfile",
 		"IUserCharacter",
 		"IUserCostume",
@@ -46,6 +48,26 @@ func StartedMinimalDiff(userID int64) map[string]*pb.DiffData {
 		"IUserCompanion",
 		"IUserDeckCharacter",
 		"IUserDeck",
+	}
+	groupA1 := []string{
+		"IUserProfile",
+		"IUserCharacter",
+		"IUserCostume",
+	}
+	profileOnly := []string{
+		"IUserProfile",
+	}
+	characterCostumeOnly := []string{
+		"IUserCharacter",
+		"IUserCostume",
+	}
+	groupA2 := []string{
+		"IUserWeapon",
+		"IUserCompanion",
+		"IUserDeckCharacter",
+		"IUserDeck",
+	}
+	groupB := []string{
 		"IUserMission",
 		"IUserMainQuestFlowStatus",
 		"IUserMainQuestMainFlowStatus",
@@ -54,10 +76,32 @@ func StartedMinimalDiff(userID int64) map[string]*pb.DiffData {
 		"IUserQuest",
 		"IUserTutorialProgress",
 	}
+
+	selected := groupA
+	switch startedDiffBisectGroup {
+	case "profileOnly":
+		selected = profileOnly
+	case "characterCostumeOnly":
+		selected = characterCostumeOnly
+	case "groupA1":
+		selected = groupA1
+	case "groupA2":
+		selected = groupA2
+	case "groupB":
+		selected = groupB
+	case "full":
+		selected = append(append([]string{}, groupA...), groupB...)
+	case "empty":
+		selected = nil
+	}
+
 	out := make(map[string]*pb.DiffData, len(selected))
 	for _, table := range selected {
 		if jsonStr, ok := tables[table]; ok {
-			out[table] = &pb.DiffData{UpdateRecordsJson: jsonStr}
+			out[table] = &pb.DiffData{
+				UpdateRecordsJson: jsonStr,
+				DeleteKeysJson:    "[]",
+			}
 		}
 	}
 	return out

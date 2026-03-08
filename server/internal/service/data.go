@@ -163,7 +163,7 @@ func defaultTableNames() []string {
 		"IUserShopReplaceableLineup",
 		"IUserSideStoryQuest",
 		"IUserSideStoryQuestSceneProgressStatus",
-		// "IUserStatus",
+		"IUserStatus",
 		"IUserThought",
 		"IUserTripleDeck",
 		"IUserTutorialProgress",

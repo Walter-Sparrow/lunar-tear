@@ -13,6 +13,12 @@
 let libil2cpp;
 let userDataRequestSeq = 0;
 let activeUserDataRequestId = 0;
+let lastGameStartNonEmptyDiffThreadId = 0;
+let loggedGameStartCountCallerDisasm = false;
+let loggedGameStartEnumeratorCallerDisasm = false;
+let loggedGameStartDiffHelperCallerDisasm = false;
+let gameStartMetadataInspectDepth = 0;
+let gameStartEnumeratorLogBudget = 0;
 
 function awaitLibil2cpp(callback) {
   if (globalThis._userDataFocusHooksInstalled) return;
@@ -169,6 +175,90 @@ function readStringListSummary(list, limit = 8) {
   }
 }
 
+function readStringArraySummary(arr, limit = 8) {
+  try {
+    if (!arr || arr.isNull()) return '<null>';
+    const len = readManagedArrayLength(arr);
+    const out = [];
+    for (let i = 0; i < Math.min(len, limit); i += 1) {
+      out.push(`"${readManagedString(readManagedArrayElementPointer(arr, i))}"`);
+    }
+    const suffix = len > limit ? ', ...' : '';
+    return `len=${len} [${out.join(', ')}${suffix}]`;
+  } catch (error) {
+    return '<string-array-err>';
+  }
+}
+
+function readMetadataEntriesSummary(metadataObj, limit = 12) {
+  try {
+    if (!metadataObj || metadataObj.isNull()) return '<null>';
+    const entries = readObjectPointer(metadataObj, 0x0);
+    const size = readListSize(entries);
+    const out = [];
+    for (let i = 0; i < Math.min(size, limit); i += 1) {
+      const entry = readListElementPointer(entries, i);
+      const key = readManagedString(readObjectPointer(entry, 0x0));
+      const value = readManagedString(readObjectPointer(entry, 0x8));
+      out.push(`"${key}"="${value}"`);
+    }
+    const suffix = size > limit ? ', ...' : '';
+    return `size=${size} [${out.join(', ')}${suffix}]`;
+  } catch (error) {
+    return '<metadata-entries-err>';
+  }
+}
+
+function readDictionaryCount(obj) {
+  try {
+    if (!obj || obj.isNull()) return -1;
+    return obj.add(0x20).readS32();
+  } catch (error) {
+    return -1;
+  }
+}
+
+function isUpdatedUserDataDictionary(obj) {
+  try {
+    if (!obj || obj.isNull()) return false;
+    const commonResponse = globalThis._lastGameStartCommonResponse;
+    if (!commonResponse || commonResponse.isNull()) return false;
+    const updatedUserData = readObjectPointer(commonResponse, 0x60);
+    if (!updatedUserData || updatedUserData.isNull()) return false;
+    const updateMap = readObjectPointer(updatedUserData, 0x0);
+    const deleteMap = readObjectPointer(updatedUserData, 0x8);
+    return obj.equals(updateMap) || obj.equals(deleteMap);
+  } catch (error) {
+    return false;
+  }
+}
+
+function isOnGameStartNonEmptyDiffThread() {
+  try {
+    return (
+      lastGameStartNonEmptyDiffThreadId !== 0 &&
+      Process.getCurrentThreadId() === lastGameStartNonEmptyDiffThreadId
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
+function readManagedArrayObjectPointersSummary(arr, limit = 8) {
+  try {
+    if (!arr || arr.isNull()) return '<null>';
+    const len = readManagedArrayLength(arr);
+    const out = [];
+    for (let i = 0; i < Math.min(len, limit); i += 1) {
+      out.push(pointerSummary(readManagedArrayElementPointer(arr, i)));
+    }
+    const suffix = len > limit ? ', ...' : '';
+    return `len=${len} [${out.join(', ')}${suffix}]`;
+  } catch (error) {
+    return '<managed-array-obj-err>';
+  }
+}
+
 function readStringListListSummary(listOfLists, outerLimit = 4, innerLimit = 8) {
   try {
     if (!listOfLists || listOfLists.isNull()) return '<null>';
@@ -295,6 +385,7 @@ function isLikelyTitlePipelineCaller(addr) {
     if (!addr || addr.isNull() || !libil2cpp) return false;
     const offset = addr.sub(libil2cpp).toUInt32();
     return (
+      (offset >= 0x292c544 && offset <= 0x292f1dc) ||
       (offset >= 0x292f898 && offset <= 0x292feb4) ||
       (offset >= 0x29334d0 && offset <= 0x293398c) ||
       (offset >= 0x30be5e8 && offset <= 0x30be690)
@@ -302,6 +393,13 @@ function isLikelyTitlePipelineCaller(addr) {
   } catch (error) {
     return false;
   }
+}
+
+function isGameStartInterceptorCaller(addr) {
+  return (
+    isOffsetInRange(addr, 0x362c57c, 0x362e370) ||
+    isOffsetInRange(addr, 0x2ffd0d0, 0x2ffd400)
+  );
 }
 
 function isCreateNewUserGateCaller(addr) {
@@ -345,6 +443,14 @@ function isEntityIUserAppendCoreCaller(addr) {
 
 function isEntityIUserCtorCaller(addr) {
   return isOffsetInRange(addr, 0x2f49270, 0x2f496cc);
+}
+
+function isEntityIUserProfileCtorCaller(addr) {
+  return isOffsetInRange(addr, 0x40456f0, 0x40458a4);
+}
+
+function isEntityIUserStatusCtorCaller(addr) {
+  return isOffsetInRange(addr, 0x404aa48, 0x404abb4);
 }
 
 function readPlayerRegistrationSummary(obj) {
@@ -394,11 +500,45 @@ function pointerLocationSummary(addr) {
   }
 }
 
+function formatBacktraceSummary(context, limit = 16) {
+  try {
+    return Thread.backtrace(context, Backtracer.ACCURATE)
+      .slice(0, limit)
+      .map((addr) => pointerLocationSummary(addr))
+      .join(' <- ');
+  } catch (error) {
+    return `<bt-err:${error}>`;
+  }
+}
+
+function disassembleAround(offset, beforeCount = 6, afterCount = 30) {
+  try {
+    const out = [];
+    let start = libil2cpp.add(offset);
+    for (let i = 0; i < beforeCount; i += 1) {
+      start = Instruction.parse(start).address.sub(4);
+    }
+    let cursor = start;
+    for (let i = 0; i < beforeCount + afterCount; i += 1) {
+      const insn = Instruction.parse(cursor);
+      out.push(`${moduleOffsetHex(insn.address)}: ${insn.mnemonic} ${insn.opStr}`);
+      cursor = insn.next;
+    }
+    return out.join(' | ');
+  } catch (error) {
+    return `<disasm-err:${error}>`;
+  }
+}
+
 function isInterestingUserDataExceptionFrame(addr) {
   return (
     isLikelyUserDataGetFlowCaller(addr) ||
+    isGameStartInterceptorCaller(addr) ||
     isOffsetInRange(addr, 0x28f06c8, 0x28f0860) ||
     isOffsetInRange(addr, 0x2f49158, 0x2f49424) ||
+    isOffsetInRange(addr, 0x42b74b4, 0x42b78bc) ||
+    isOffsetInRange(addr, 0x3a44d30, 0x3a4528c) ||
+    isOffsetInRange(addr, 0x38388fc, 0x3838c60) ||
     isOffsetInRange(addr, 0x4480a30, 0x4480abc)
   );
 }
@@ -591,7 +731,11 @@ awaitLibil2cpp(() => {
     hook('MPDateTime.ConvertMPDateTime', 0x4480a30, {
       onEnter(args) {
         const caller = this.returnAddress;
-        if (!isOffsetInRange(caller, 0x2f49270, 0x2f496cc)) {
+        if (
+          !isEntityIUserCtorCaller(caller) &&
+          !isEntityIUserProfileCtorCaller(caller) &&
+          !isEntityIUserStatusCtorCaller(caller)
+        ) {
           this.skip = true;
           return;
         }
@@ -607,6 +751,42 @@ awaitLibil2cpp(() => {
     });
   } catch (error) {
     console.log(`[*] MPDateTime.ConvertMPDateTime hook failed: ${error}`);
+  }
+
+  try {
+    const abortPtr = Module.findExportByName('libc.so', 'abort');
+    if (abortPtr) {
+      Interceptor.attach(abortPtr, {
+        onEnter() {
+          const threadId = Process.getCurrentThreadId();
+          if (threadId !== lastGameStartNonEmptyDiffThreadId) return;
+          console.log(
+            `[GameStart] abort thread=${threadId} backtrace=${formatBacktraceSummary(this.context)}`,
+          );
+        },
+      });
+      console.log(`[*] Hook abort @ ${abortPtr}`);
+    }
+  } catch (error) {
+    console.log(`[*] abort hook failed: ${error}`);
+  }
+
+  try {
+    const tgkillPtr = Module.findExportByName('libc.so', 'tgkill');
+    if (tgkillPtr) {
+      Interceptor.attach(tgkillPtr, {
+        onEnter(args) {
+          const threadId = Process.getCurrentThreadId();
+          if (threadId !== lastGameStartNonEmptyDiffThreadId) return;
+          console.log(
+            `[GameStart] tgkill tgid=${args[0].toInt32()} tid=${args[1].toInt32()} sig=${args[2].toInt32()} backtrace=${formatBacktraceSummary(this.context)}`,
+          );
+        },
+      });
+      console.log(`[*] Hook tgkill @ ${tgkillPtr}`);
+    }
+  } catch (error) {
+    console.log(`[*] tgkill hook failed: ${error}`);
   }
 
   hook('UserDataGet.<RequestAsync>b__11_1', 0x361ae60, {
@@ -885,6 +1065,519 @@ awaitLibil2cpp(() => {
     },
     onLeave(retval) {
       console.log(`[Title] IUserService.GameStartAsync -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('GameStartResponse..ctor', 0x42b74b4, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(`[GameStart] Response..ctor self=${pointerSummary(args[0])}`);
+    },
+    onLeave() {
+      console.log(`[GameStart] Response..ctor completed self=${pointerSummary(this.self)}`);
+    },
+  });
+
+  hook('GameStartResponse.get_DiffUserData', 0x42b75fc, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(`[GameStart] Response.get_DiffUserData self=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      console.log(`[GameStart] Response.get_DiffUserData -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('GameStartResponse.MergeFrom(CodedInputStream)', 0x42b78bc, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(
+        `[GameStart] Response.MergeFrom self=${pointerSummary(args[0])} input=${pointerSummary(args[1])}`,
+      );
+    },
+    onLeave() {
+      console.log(`[GameStart] Response.MergeFrom completed self=${pointerSummary(this.self)}`);
+    },
+  });
+
+  hook('DiffData..ctor', 0x3a44d30, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(`[GameStart] DiffData..ctor self=${pointerSummary(args[0])}`);
+    },
+    onLeave() {
+      console.log(`[GameStart] DiffData..ctor completed self=${pointerSummary(this.self)}`);
+    },
+  });
+
+  hook('DiffData.set_UpdateRecordsJson', 0x3a44e2c, {
+    onEnter(args) {
+      const value = readManagedString(args[1]);
+      console.log(
+        `[GameStart] DiffData.set_UpdateRecordsJson self=${pointerSummary(args[0])} len=${value === '<null>' ? -1 : value.length}`,
+      );
+    },
+  });
+
+  hook('DiffData.set_DeleteKeysJson', 0x3a44ea4, {
+    onEnter(args) {
+      const value = readManagedString(args[1]);
+      console.log(
+        `[GameStart] DiffData.set_DeleteKeysJson self=${pointerSummary(args[0])} len=${value === '<null>' ? -1 : value.length}`,
+      );
+    },
+  });
+
+  hook('DiffData.MergeFrom(CodedInputStream)', 0x3a4528c, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(
+        `[GameStart] DiffData.MergeFrom self=${pointerSummary(args[0])} input=${pointerSummary(args[1])}`,
+      );
+    },
+    onLeave() {
+      console.log(`[GameStart] DiffData.MergeFrom completed self=${pointerSummary(this.self)}`);
+    },
+  });
+
+  hook('UserDiffUpdateInterceptor.<SendAsync>d__1.MoveNext', 0x362d9f4, {
+    onEnter(args) {
+      this.self = args[0];
+      const state = readRawInt32(args[0], 0x0);
+      const context = readRawPointer(args[0], 0x28);
+      console.log(
+        `[GameStart] UserDiffUpdateInterceptor.MoveNext self=${pointerSummary(args[0])} state=${state} context=${pointerSummary(context)}`,
+      );
+    },
+    onLeave() {
+      const state = readRawInt32(this.self, 0x0);
+      console.log(
+        `[GameStart] UserDiffUpdateInterceptor.MoveNext completed self=${pointerSummary(this.self)} state=${state}`,
+      );
+    },
+  });
+
+  hook('UserAuthInterceptor.<SendAsync>d__0.MoveNext', 0x362c57c, {
+    onEnter(args) {
+      this.self = args[0];
+      const state = readRawInt32(args[0], 0x0);
+      const context = readRawPointer(args[0], 0x28);
+      console.log(
+        `[GameStart] UserAuthInterceptor.MoveNext self=${pointerSummary(args[0])} state=${state} context=${pointerSummary(context)}`,
+      );
+    },
+    onLeave() {
+      const state = readRawInt32(this.self, 0x0);
+      console.log(
+        `[GameStart] UserAuthInterceptor.MoveNext completed self=${pointerSummary(this.self)} state=${state}`,
+      );
+    },
+  });
+
+  hook('ResponseContextExtensions.GetCommonResponse(ResponseContext)', 0x362cc30, {
+    onEnter(args) {
+      console.log(`[GameStart] GetCommonResponse(context) context=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      globalThis._lastGameStartCommonResponse = retval;
+      console.log(`[GameStart] GetCommonResponse(context) -> ${pointerSummary(retval)}`);
+      const updateUserDataNames = readObjectPointer(retval, 0x50);
+      const updatedUserData = readObjectPointer(retval, 0x60);
+      const updateUserDataMap = readObjectPointer(updatedUserData, 0x0);
+      const deleteUserDataMap = readObjectPointer(updatedUserData, 0x8);
+      console.log(
+        `[GameStart] CommonResponse details responseDatetime=${readObjectInt64(retval, 0x20)} updateUserDataNames=${readStringArraySummary(updateUserDataNames)} updatedUserData=${pointerSummary(updatedUserData)} updateMap=${pointerSummary(updateUserDataMap)} updateMapCount=${readDictionaryCount(updateUserDataMap)} deleteMap=${pointerSummary(deleteUserDataMap)} deleteMapCount=${readDictionaryCount(deleteUserDataMap)}`,
+      );
+    },
+  });
+
+  hook('ResponseContextExtensions.GetCommonResponse(Metadata)', 0x362ce00, {
+    onEnter(args) {
+      gameStartMetadataInspectDepth += 1;
+      console.log(`[GameStart] GetCommonResponse(metadata) metadata=${pointerSummary(args[0])}`);
+      console.log(
+        `[GameStart] Metadata entries ${readMetadataEntriesSummary(args[0])}`,
+      );
+    },
+    onLeave(retval) {
+      console.log(`[GameStart] GetCommonResponse(metadata) -> ${pointerSummary(retval)}`);
+      gameStartMetadataInspectDepth = Math.max(0, gameStartMetadataInspectDepth - 1);
+    },
+  });
+
+  hook('Metadata.get_Count', 0x3bd96e0, {
+    onEnter(args) {
+      if (gameStartMetadataInspectDepth <= 0) return;
+      this.shouldLog = true;
+      console.log(`[GameStart] Metadata.get_Count self=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[GameStart] Metadata.get_Count -> ${retval.toInt32()}`);
+    },
+  });
+
+  hook('Metadata.get_Item', 0x3bd9054, {
+    onEnter(args) {
+      if (gameStartMetadataInspectDepth <= 0) return;
+      this.shouldLog = true;
+      this.index = args[1].toInt32();
+      console.log(
+        `[GameStart] Metadata.get_Item self=${pointerSummary(args[0])} index=${this.index}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[GameStart] Metadata.get_Item -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('Metadata.Entry.get_Key', 0x3bd9a98, {
+    onEnter() {
+      if (gameStartMetadataInspectDepth <= 0) return;
+      this.shouldLog = true;
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[GameStart] Metadata.Entry.get_Key -> "${readManagedString(retval)}"`);
+    },
+  });
+
+  hook('Metadata.Entry.get_Value', 0x3bd9aa0, {
+    onEnter() {
+      if (gameStartMetadataInspectDepth <= 0) return;
+      this.shouldLog = true;
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[GameStart] Metadata.Entry.get_Value -> "${readManagedString(retval)}"`);
+    },
+  });
+
+  hook('UserDiffInfo.GetUserDiff', 0x2ffd0d0, {
+    onEnter(args) {
+      console.log(`[GameStart] UserDiffInfo.GetUserDiff context=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      console.log(`[GameStart] UserDiffInfo.GetUserDiff -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('MapField<string, DiffData>.get_Count', 0x3838c60, {
+    onEnter(args) {
+      if (!isGameStartInterceptorCaller(this.returnAddress)) return;
+      this.shouldLog = true;
+      this.self = args[0];
+      this.caller = moduleOffsetHex(this.returnAddress);
+      console.log(
+        `[GameStart] MapField.get_Count self=${pointerSummary(args[0])} caller=${this.caller}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      const count = retval.toInt32();
+      console.log(`[GameStart] MapField.get_Count -> ${count}`);
+      if (count > 0) {
+        const threadId = Process.getCurrentThreadId();
+        lastGameStartNonEmptyDiffThreadId = threadId;
+        if (!loggedGameStartCountCallerDisasm) {
+          loggedGameStartCountCallerDisasm = true;
+          console.log(
+            `[GameStart] Count caller disasm ${disassembleAround(0x362db90)}`,
+          );
+          console.log(
+            `[GameStart] Count branch target disasm ${disassembleAround(0x362dc00)}`,
+          );
+        }
+      }
+    },
+  });
+
+  hook('MapField<string, DiffData>.GetEnumerator', 0x38388fc, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      this.self = args[0];
+      this.caller = moduleOffsetHex(this.returnAddress);
+      console.log(
+        `[GameStart] MapField.GetEnumerator self=${pointerSummary(args[0])} caller=${this.caller}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      globalThis._lastGameStartDiffEnumerator = retval;
+      gameStartEnumeratorLogBudget = 12;
+      console.log(`[GameStart] MapField.GetEnumerator -> ${pointerSummary(retval)}`);
+      if (!loggedGameStartEnumeratorCallerDisasm) {
+        loggedGameStartEnumeratorCallerDisasm = true;
+        console.log(
+          `[GameStart] GetEnumerator caller disasm ${disassembleAround(0x362dca0, 0, 80)}`,
+        );
+      }
+    },
+  });
+
+  hook('LinkedList Enumerator.MoveNext', 0x422b000, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      if (gameStartEnumeratorLogBudget <= 0) return;
+      this.shouldLog = true;
+      this.caller = moduleOffsetHex(this.returnAddress);
+      console.log(
+        `[GameStart] DiffEnumerator.MoveNext self=${pointerSummary(args[0])} caller=${this.caller}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      gameStartEnumeratorLogBudget -= 1;
+      console.log(`[GameStart] DiffEnumerator.MoveNext -> ${retval.toInt32() !== 0}`);
+    },
+  });
+
+  hook('LinkedList Enumerator.get_Current', 0x422aeb4, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      if (gameStartEnumeratorLogBudget <= 0) return;
+      this.shouldLog = true;
+      this.caller = moduleOffsetHex(this.returnAddress);
+      console.log(
+        `[GameStart] DiffEnumerator.get_Current self=${pointerSummary(args[0])} caller=${this.caller}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      gameStartEnumeratorLogBudget -= 1;
+      console.log(`[GameStart] DiffEnumerator.get_Current -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('MapField<string, DiffData>.ContainsKey', 0x3837c28, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      this.key = readManagedString(args[1]);
+      console.log(
+        `[GameStart] MapField.ContainsKey self=${pointerSummary(args[0])} key="${this.key}"`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[GameStart] MapField.ContainsKey -> ${retval.toInt32() !== 0}`);
+    },
+  });
+
+  hook('MapField<string, DiffData>.TryGetValue', 0x3837eb8, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      this.outPtr = args[2];
+      this.key = readManagedString(args[1]);
+      console.log(
+        `[GameStart] MapField.TryGetValue self=${pointerSummary(args[0])} key="${this.key}" out=${pointerSummary(args[2])}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      const outValue = this.outPtr.isNull() ? ptr(0) : this.outPtr.readPointer();
+      console.log(
+        `[GameStart] MapField.TryGetValue -> ok=${retval.toInt32() !== 0} value=${pointerSummary(outValue)}`,
+      );
+    },
+  });
+
+  hook('MapField<string, DiffData>.get_Item', 0x3837f3c, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      this.key = readManagedString(args[1]);
+      console.log(
+        `[GameStart] MapField.get_Item self=${pointerSummary(args[0])} key="${this.key}"`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[GameStart] MapField.get_Item -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('KeyValuePair<string, DiffData>.get_Key', 0x4227920, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      console.log(`[GameStart] KeyValuePair.get_Key pair=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[GameStart] KeyValuePair.get_Key -> "${readManagedString(retval)}"`);
+    },
+  });
+
+  hook('KeyValuePair<string, DiffData>.get_Value', 0x4227928, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      console.log(`[GameStart] KeyValuePair.get_Value pair=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[GameStart] KeyValuePair.get_Value -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('DiffData.get_UpdateRecordsJson', 0x3a44e24, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      console.log(`[GameStart] DiffData.get_UpdateRecordsJson self=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      const value = readManagedString(retval);
+      console.log(
+        `[GameStart] DiffData.get_UpdateRecordsJson -> len=${value === '<null>' ? -1 : value.length}`,
+      );
+    },
+  });
+
+  hook('ImmutableBuilder.Diff(EntityIUserProfile[])', 0x268a1f8, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      this.caller = moduleOffsetHex(this.returnAddress);
+      const data = args[1];
+      console.log(
+        `[GameStart] Diff(IUserProfile[]) caller=${this.caller} builder=${pointerSummary(args[0])} data=${readManagedArrayObjectPointersSummary(data)}`,
+      );
+    },
+  });
+
+  hook('ImmutableBuilder.Diff(EntityIUserStatus[])', 0x269cfb8, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      this.caller = moduleOffsetHex(this.returnAddress);
+      const data = args[1];
+      console.log(
+        `[GameStart] Diff(IUserStatus[]) caller=${this.caller} builder=${pointerSummary(args[0])} data=${readManagedArrayObjectPointersSummary(data)}`,
+      );
+    },
+  });
+
+  hook('EntityIUserProfileTable.FindByUserId', 0x41a479c, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      this.key = args[1].toString();
+      console.log(
+        `[GameStart] IUserProfileTable.FindByUserId self=${pointerSummary(args[0])} key=${this.key}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[GameStart] IUserProfileTable.FindByUserId -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('EntityIUserStatusTable.FindByUserId', 0x35d9988, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      this.key = args[1].toString();
+      console.log(
+        `[GameStart] IUserStatusTable.FindByUserId self=${pointerSummary(args[0])} key=${this.key}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[GameStart] IUserStatusTable.FindByUserId -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('GameStart binary-search block', 0x362dc20, {
+    onEnter(args) {
+      const ctx = this.context;
+      const arrayObj = ctx.x8;
+      const targetObj = ctx.x11;
+      const len = arrayObj.isNull() ? -1 : readManagedArrayLength(arrayObj);
+      console.log(
+        `[GameStart] BinarySearchBlock array=${pointerSummary(arrayObj)} len=${len} target=${pointerSummary(targetObj)} targetStr="${readManagedString(targetObj)}"`,
+      );
+      if (!arrayObj.isNull()) {
+        console.log(
+          `[GameStart] BinarySearchBlock items ${readManagedArrayObjectPointersSummary(arrayObj)}`,
+        );
+      }
+    },
+  });
+
+  hook('UpdatedUserDataFormatter.Deserialize', 0x3bdf2ec, {
+    onEnter(args) {
+      console.log(
+        `[GameStart] UpdatedUserDataFormatter.Deserialize self=${pointerSummary(args[0])} reader=${pointerSummary(args[1])} resolver=${pointerSummary(args[2])}`,
+      );
+    },
+    onLeave(retval) {
+      console.log(`[GameStart] UpdatedUserDataFormatter.Deserialize -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('UpdatedUserDataListFormatter.Deserialize', 0x3bdf6e8, {
+    onEnter(args) {
+      console.log(
+        `[GameStart] UpdatedUserDataListFormatter.Deserialize self=${pointerSummary(args[0])} reader=${pointerSummary(args[1])} resolver=${pointerSummary(args[2])}`,
+      );
+    },
+    onLeave(retval) {
+      console.log(`[GameStart] UpdatedUserDataListFormatter.Deserialize -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('Dictionary<string, UpdatedUserDataList>.ContainsKey', 0x4f94b3c, {
+    onEnter(args) {
+      if (!isUpdatedUserDataDictionary(args[0])) return;
+      this.shouldLog = true;
+      this.key = readManagedString(args[1]);
+      console.log(
+        `[GameStart] UpdatedUserDataMap.ContainsKey self=${pointerSummary(args[0])} key="${this.key}" count=${readDictionaryCount(args[0])}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[GameStart] UpdatedUserDataMap.ContainsKey -> ${retval.toInt32() !== 0}`);
+    },
+  });
+
+  hook('Dictionary<string, UpdatedUserDataList>.TryGetValue', 0x4f96588, {
+    onEnter(args) {
+      if (!isUpdatedUserDataDictionary(args[0])) return;
+      this.shouldLog = true;
+      this.outPtr = args[2];
+      this.key = readManagedString(args[1]);
+      console.log(
+        `[GameStart] UpdatedUserDataMap.TryGetValue self=${pointerSummary(args[0])} key="${this.key}" count=${readDictionaryCount(args[0])}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      const outValue = this.outPtr.isNull() ? ptr(0) : this.outPtr.readPointer();
+      console.log(
+        `[GameStart] UpdatedUserDataMap.TryGetValue -> ok=${retval.toInt32() !== 0} value=${pointerSummary(outValue)}`,
+      );
+    },
+  });
+
+  hook('Dictionary<string, UpdatedUserDataList>.get_Item', 0x4cf212c, {
+    onEnter(args) {
+      if (!isUpdatedUserDataDictionary(args[0])) return;
+      this.shouldLog = true;
+      this.key = readManagedString(args[1]);
+      console.log(
+        `[GameStart] UpdatedUserDataMap.get_Item self=${pointerSummary(args[0])} key="${this.key}" count=${readDictionaryCount(args[0])}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[GameStart] UpdatedUserDataMap.get_Item -> ${pointerSummary(retval)}`);
     },
   });
 
@@ -1244,9 +1937,166 @@ awaitLibil2cpp(() => {
     },
   });
 
+  hook('EntityIUserStatus.ctor(Dictionary<string, object>)', 0x404aa48, {
+    onEnter(args) {
+      this.self = args[0];
+      this.sourceDictionary = args[1];
+      console.log(
+        `[UserDB] EntityIUserStatus.ctor(dict) self=${pointerSummary(args[0])} sourceDictionary=${pointerSummary(args[1])}`,
+      );
+    },
+    onLeave() {
+      console.log(
+        `[UserDB] EntityIUserStatus.ctor(dict) completed self=${pointerSummary(this.self)} sourceDictionary=${pointerSummary(this.sourceDictionary)}`,
+      );
+    },
+  });
+
+  hook('EntityIUserStatus.set_UserId', 0x404a9f0, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] EntityIUserStatus.set_UserId self=${pointerSummary(args[0])} value=${args[1].toString()}`,
+      );
+    },
+  });
+
+  hook('EntityIUserStatus.set_Level', 0x404aa00, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] EntityIUserStatus.set_Level self=${pointerSummary(args[0])} value=${args[1].toInt32()}`,
+      );
+    },
+  });
+
+  hook('EntityIUserStatus.set_Exp', 0x404aa10, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] EntityIUserStatus.set_Exp self=${pointerSummary(args[0])} value=${args[1].toInt32()}`,
+      );
+    },
+  });
+
+  hook('EntityIUserStatus.set_StaminaMilliValue', 0x404aa20, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] EntityIUserStatus.set_StaminaMilliValue self=${pointerSummary(args[0])} value=${args[1].toInt32()}`,
+      );
+    },
+  });
+
+  hook('EntityIUserStatus.set_StaminaUpdateDatetime', 0x404aa30, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] EntityIUserStatus.set_StaminaUpdateDatetime self=${pointerSummary(args[0])} value=${pointerSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('EntityIUserStatus.set_LatestVersion', 0x404aa40, {
+    onEnter(args) {
+      console.log(
+        `[UserDB] EntityIUserStatus.set_LatestVersion self=${pointerSummary(args[0])} value=${args[1].toString()}`,
+      );
+    },
+  });
+
+  hook('EntityIUserProfile.ctor(Dictionary<string, object>)', 0x40456f0, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      this.self = args[0];
+      this.sourceDictionary = args[1];
+      console.log(
+        `[UserDB] EntityIUserProfile.ctor(dict) self=${pointerSummary(args[0])} sourceDictionary=${pointerSummary(args[1])}`,
+      );
+    },
+    onLeave() {
+      if (!this.shouldLog) return;
+      console.log(
+        `[UserDB] EntityIUserProfile.ctor(dict) completed self=${pointerSummary(this.self)} sourceDictionary=${pointerSummary(this.sourceDictionary)}`,
+      );
+    },
+  });
+
+  hook('EntityIUserProfile.set_UserId', 0x4045678, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      console.log(
+        `[UserDB] EntityIUserProfile.set_UserId self=${pointerSummary(args[0])} value=${args[1].toString()}`,
+      );
+    },
+  });
+
+  hook('EntityIUserProfile.set_Name', 0x4045688, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      console.log(
+        `[UserDB] EntityIUserProfile.set_Name self=${pointerSummary(args[0])} value="${readManagedString(args[1])}"`,
+      );
+    },
+  });
+
+  hook('EntityIUserProfile.set_NameUpdateDatetime', 0x4045698, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      console.log(
+        `[UserDB] EntityIUserProfile.set_NameUpdateDatetime self=${pointerSummary(args[0])} value=${pointerSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('EntityIUserProfile.set_Message', 0x40456a8, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      console.log(
+        `[UserDB] EntityIUserProfile.set_Message self=${pointerSummary(args[0])} value="${readManagedString(args[1])}"`,
+      );
+    },
+  });
+
+  hook('EntityIUserProfile.set_MessageUpdateDatetime', 0x40456b8, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      console.log(
+        `[UserDB] EntityIUserProfile.set_MessageUpdateDatetime self=${pointerSummary(args[0])} value=${pointerSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('EntityIUserProfile.set_FavoriteCostumeId', 0x40456c8, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      console.log(
+        `[UserDB] EntityIUserProfile.set_FavoriteCostumeId self=${pointerSummary(args[0])} value=${args[1].toInt32()}`,
+      );
+    },
+  });
+
+  hook('EntityIUserProfile.set_FavoriteCostumeIdUpdateDatetime', 0x40456d8, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      console.log(
+        `[UserDB] EntityIUserProfile.set_FavoriteCostumeIdUpdateDatetime self=${pointerSummary(args[0])} value=${pointerSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('EntityIUserProfile.set_LatestVersion', 0x40456e8, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      console.log(
+        `[UserDB] EntityIUserProfile.set_LatestVersion self=${pointerSummary(args[0])} value=${args[1].toString()}`,
+      );
+    },
+  });
+
   hook('Dictionary<string, object>.get_Item', 0x4f947cc, {
     onEnter(args) {
-      if (!isEntityIUserCtorCaller(this.returnAddress)) return;
+      if (
+        !isEntityIUserCtorCaller(this.returnAddress) &&
+        !isEntityIUserProfileCtorCaller(this.returnAddress) &&
+        !isEntityIUserStatusCtorCaller(this.returnAddress)
+      ) return;
       this.shouldLog = true;
       this.caller = moduleOffsetHex(this.returnAddress);
       this.key = readManagedString(args[1]);
@@ -1255,6 +2105,60 @@ awaitLibil2cpp(() => {
     onLeave(retval) {
       if (!this.shouldLog) return;
       console.log(`[UserDB] Dict.get_Item caller=${this.caller} key="${this.key}" -> ${readManagedScalarSummary(retval)}`);
+    },
+  });
+
+  hook('DarkUserDataDatabaseBuilderAppendHelper.Diff(DarkUserImmutableBuilder, tableName, records)', 0x28f0794, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      this.tableName = readManagedString(args[1]);
+      this.records = args[2];
+      this.callerAddr = this.returnAddress;
+      this.caller = moduleOffsetHex(this.returnAddress);
+      console.log(
+        `[GameStartDiff] Diff table=${this.tableName} caller=${this.caller} builder=${pointerSummary(args[0])} records=${pointerSummary(args[2])} size=${readListSize(args[2])}`,
+      );
+      if (!loggedGameStartDiffHelperCallerDisasm) {
+        loggedGameStartDiffHelperCallerDisasm = true;
+        console.log(
+          `[GameStartDiff] Diff helper caller disasm ${disassembleAround(this.callerAddr.sub(libil2cpp).toUInt32(), 0, 60)}`,
+        );
+      }
+    },
+    onLeave() {
+      if (!this.shouldLog) return;
+      console.log(
+        `[GameStartDiff] Diff completed table=${this.tableName} caller=${this.caller} records=${pointerSummary(this.records)} size=${readListSize(this.records)}`,
+      );
+    },
+  });
+
+  hook('DarkUserDataDatabaseBuilderAppendHelper.Remove(DarkUserImmutableBuilder, tableName, records)', 0x28f0860, {
+    onEnter(args) {
+      if (!isOnGameStartNonEmptyDiffThread()) return;
+      this.shouldLog = true;
+      this.tableName = readManagedString(args[1]);
+      this.records = args[2];
+      this.caller = moduleOffsetHex(this.returnAddress);
+      console.log(
+        `[GameStartDiff] Remove table=${this.tableName} caller=${this.caller} builder=${pointerSummary(args[0])} records=${pointerSummary(args[2])} size=${readListSize(args[2])}`,
+      );
+    },
+    onLeave() {
+      if (!this.shouldLog) return;
+      console.log(
+        `[GameStartDiff] Remove completed table=${this.tableName} caller=${this.caller} records=${pointerSummary(this.records)} size=${readListSize(this.records)}`,
+      );
+    },
+  });
+
+  hook('DarkUserImmutableBuilder.Build', 0x2632190, {
+    onEnter(args) {
+      console.log(`[GameStartDiff] ImmutableBuilder.Build self=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      console.log(`[GameStartDiff] ImmutableBuilder.Build -> ${pointerSummary(retval)}`);
     },
   });
 
@@ -1289,13 +2193,23 @@ awaitLibil2cpp(() => {
     },
   });
 
+  hook('DarkUserMemoryDatabase.ToImmutableBuilder', 0x29cb2a0, {
+    onEnter(args) {
+      console.log(`[GameStart] ToImmutableBuilder db=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      console.log(`[GameStart] ToImmutableBuilder -> ${pointerSummary(retval)}`);
+    },
+  });
+
   hook('DatabaseDefine.get_User', 0x2f45bd8, {
     onEnter() {
       const caller = this.returnAddress;
       if (
         !isLikelyTitlePipelineCaller(caller) &&
         !isLikelyUserDataPipelineCaller(caller) &&
-        !isUserDataSuccessCallbackCaller(caller)
+        !isUserDataSuccessCallbackCaller(caller) &&
+        !isGameStartInterceptorCaller(caller)
       ) {
         return;
       }

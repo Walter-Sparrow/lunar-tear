@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"time"
 
 	pb "lunar-tear/server/gen/proto"
 	"lunar-tear/server/internal/mock"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -20,6 +22,28 @@ type UserServiceServer struct {
 
 func NewUserServiceServer() *UserServiceServer {
 	return &UserServiceServer{}
+}
+
+func setCommonResponseTrailers(ctx context.Context, diff map[string]*pb.DiffData, includeUpdateNames bool) {
+	keys := make([]string, 0, len(diff))
+	for key := range diff {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	pairs := []string{
+		"x-apb-response-datetime", fmt.Sprintf("%d", time.Now().UnixMilli()),
+	}
+	if includeUpdateNames && len(keys) > 0 {
+		pairs = append(pairs, "x-apb-update-user-data-names", keys[0])
+		for _, key := range keys[1:] {
+			pairs[len(pairs)-1] += "," + key
+		}
+	}
+
+	if err := grpc.SetTrailer(ctx, metadata.Pairs(pairs...)); err != nil {
+		log.Printf("[UserService] failed to set trailers: %v", err)
+	}
 }
 
 func (s *UserServiceServer) RegisterUser(ctx context.Context, req *pb.RegisterUserRequest) (*pb.RegisterUserResponse, error) {
@@ -57,10 +81,13 @@ func (s *UserServiceServer) GameStart(ctx context.Context, _ *emptypb.Empty) (*p
 		}
 	}
 
+	diff := mock.StartedMinimalDiff(mock.DefaultUserID)
+	setCommonResponseTrailers(ctx, diff, true)
+
 	return &pb.GameStartResponse{
 		// Apply only the starter outgame rows we need after title completion.
 		// Keep IUser and other risky core-account rows out of GameStart diff.
-		DiffUserData: mock.StartedMinimalDiff(mock.DefaultUserID),
+		DiffUserData: diff,
 	}, nil
 }
 

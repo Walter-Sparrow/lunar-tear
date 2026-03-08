@@ -333,7 +333,7 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		"userRestrictionType": 0,
 		"registerDatetime":    nowMillis,
 		"gameStartDatetime":   nowMillis,
-		"latestVersion": 0,
+		"latestVersion":       0,
 	})
 	userSettingJSON, _ := encodeJSONRecords(&EntityIUserSetting{
 		UserId:                userID,
@@ -366,28 +366,29 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		MainQuestRouteId:  1,
 		LatestVersion:     0,
 	})
-	userStatusJSON, _ := encodeJSONRecords(&EntityIUserStatus{
-		UserId:                userID,
-		Level:                 1,
-		Exp:                   0,
-		StaminaMilliValue:     60000,
-		StaminaUpdateDatetime: nowMillis,
-		LatestVersion:         0,
+	userStatusJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":                userID,
+		"level":                 1,
+		"exp":                   0,
+		"staminaMilliValue":     60000,
+		"staminaUpdateDatetime": nowMillis,
+		"latestVersion":         0,
 	})
 	userGemJSON, _ := encodeJSONRecords(&EntityIUserGem{
 		UserId:  userID,
 		PaidGem: 0,
 		FreeGem: 0,
 	})
-	userProfileJSON, _ := encodeJSONRecords(&EntityIUserProfile{
-		UserId:                          userID,
-		Name:                            "Lunar Tear",
-		NameUpdateDatetime:              nowMillis,
-		Message:                         "",
-		MessageUpdateDatetime:           nowMillis,
-		FavoriteCostumeId:               starterCostumeID,
-		FavoriteCostumeIdUpdateDatetime: nowMillis,
-		LatestVersion:                   0,
+	userProfileJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":                userID,
+		"name":                  "Lunar Tear",
+		"nameUpdateDatetime":    nowMillis,
+		"message":               "",
+		"messageUpdateDatetime": nowMillis,
+		// Keep profile-only GameStart rows self-consistent until costume rows are added.
+		"favoriteCostumeId":               0,
+		"favoriteCostumeIdUpdateDatetime": nowMillis,
+		"latestVersion":                   0,
 	})
 	userCharacterJSON, _ := encodeJSONRecords(&EntityIUserCharacter{
 		UserId:        userID,
@@ -564,25 +565,25 @@ func FirstEntranceUserDataJSONClientTables(userID int64) map[string]string {
 		"userRestrictionType": 0,
 		"registerDatetime":    nowMillis,
 		"gameStartDatetime":   nowMillis,
-		"latestVersion": 0,
+		"latestVersion":       0,
 	})
-	userStatusJSON, _ := encodeJSONRecords(&EntityIUserStatus{
-		UserId:                userID,
-		Level:                 1,
-		Exp:                   0,
-		StaminaMilliValue:     60000,
-		StaminaUpdateDatetime: nowMillis,
-		LatestVersion:         0,
+	userStatusJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":                userID,
+		"level":                 1,
+		"exp":                   0,
+		"staminaMilliValue":     60000,
+		"staminaUpdateDatetime": nowMillis,
+		"latestVersion":         0,
 	})
-	userProfileJSON, _ := encodeJSONRecords(&EntityIUserProfile{
-		UserId:                          userID,
-		Name:                            "Un-regist User Name",
-		NameUpdateDatetime:              nowMillis,
-		Message:                         "",
-		MessageUpdateDatetime:           nowMillis,
-		FavoriteCostumeId:               0,
-		FavoriteCostumeIdUpdateDatetime: nowMillis,
-		LatestVersion:                   0,
+	userProfileJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":                          userID,
+		"name":                            "Un-regist User Name",
+		"nameUpdateDatetime":              nowMillis,
+		"message":                         "",
+		"messageUpdateDatetime":           nowMillis,
+		"favoriteCostumeId":               0,
+		"favoriteCostumeIdUpdateDatetime": nowMillis,
+		"latestVersion":                   0,
 	})
 	userLoginJSON, _ := encodeJSONRecords(&EntityIUserLogin{
 		UserId:                    userID,
