@@ -12,9 +12,19 @@ func EmptyDiff() map[string]*pb.DiffData {
 }
 
 // BaselineDiff returns a full, client-consistent DiffUserData map for the given user.
-// Tables and JSON shapes match userdata.DefaultUserDataJSON so the client sees
-// a valid user, user_setting, and main-quest state (e.g. after Auth or GameStart).
+// Tables and JSON shapes match a first-entrance user state (e.g. after RegisterUser or Auth,
+// before the client has completed GameStart/tutorial progression).
 func BaselineDiff(userID int64) map[string]*pb.DiffData {
+	tables := userdata.FirstEntranceUserDataJSONClientTables(userID)
+	out := make(map[string]*pb.DiffData, len(tables))
+	for table, jsonStr := range tables {
+		out[table] = &pb.DiffData{UpdateRecordsJson: jsonStr}
+	}
+	return out
+}
+
+// StartedDiff returns the fuller started-account baseline used after GameStart.
+func StartedDiff(userID int64) map[string]*pb.DiffData {
 	tables := userdata.DefaultUserDataJSONClientTables(userID)
 	out := make(map[string]*pb.DiffData, len(tables))
 	for table, jsonStr := range tables {

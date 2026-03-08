@@ -58,7 +58,7 @@ func (s *UserServiceServer) GameStart(ctx context.Context, _ *emptypb.Empty) (*p
 	}
 
 	return &pb.GameStartResponse{
-		DiffUserData: mock.BaselineDiff(mock.DefaultUserID),
+		DiffUserData: mock.StartedDiff(mock.DefaultUserID),
 	}, nil
 }
 

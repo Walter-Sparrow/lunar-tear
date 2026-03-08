@@ -38,7 +38,7 @@ func (s *DataServiceServer) GetUserDataNameV2(ctx context.Context, _ *emptypb.Em
 func (s *DataServiceServer) GetUserData(ctx context.Context, req *pb.UserDataGetRequest) (*pb.UserDataGetResponse, error) {
 	log.Printf("[DataService] GetUserData: tables=%v", req.TableName)
 
-	defaults := userdata.DefaultUserDataJSONClientTables(mock.DefaultUserID)
+	defaults := userdata.FirstEntranceUserDataJSONClientTables(mock.DefaultUserID)
 	result := make(map[string]string)
 
 	for _, table := range req.TableName {

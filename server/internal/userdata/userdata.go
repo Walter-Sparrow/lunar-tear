@@ -538,3 +538,51 @@ func DefaultUserDataJSONClientTables(userID int64) map[string]string {
 		"IUserTutorialProgress":        defaultsSnake["user_tutorial_progress"],
 	}
 }
+
+// FirstEntranceUserDataJSONClientTables returns a pre-GameStart baseline.
+// Keep only core account rows that title/login can plausibly need, while leaving
+// gameplay progression and starter party data empty until GameStart.
+func FirstEntranceUserDataJSONClientTables(userID int64) map[string]string {
+	tables := DefaultUserDataJSONClientTables(userID)
+	nowMillis := time.Now().UnixMilli()
+	userJSON, _ := encodeJSONRecords(&EntityIUser{
+		UserId:              userID,
+		PlayerId:            userID,
+		OsType:              2,
+		PlatformType:        2,
+		UserRestrictionType: 0,
+		RegisterDatetime:    nowMillis,
+		GameStartDatetime:   nowMillis,
+		LatestVersion:       0,
+	})
+	userStatusJSON, _ := encodeJSONRecords(&EntityIUserStatus{
+		UserId:                userID,
+		Level:                 1,
+		Exp:                   0,
+		StaminaMilliValue:     60000,
+		StaminaUpdateDatetime: nowMillis,
+		LatestVersion:         0,
+	})
+	tables["IUser"] = userJSON
+	tables["IUserCharacter"] = "[]"
+	tables["IUserCostume"] = "[]"
+	tables["IUserWeapon"] = "[]"
+	tables["IUserCompanion"] = "[]"
+	tables["IUserDeckCharacter"] = "[]"
+	tables["IUserDeck"] = "[]"
+	tables["IUserGem"] = "[]"
+	tables["IUserProfile"] = "[]"
+	tables["IUserLogin"] = "[]"
+	tables["IUserLoginBonus"] = "[]"
+	tables["IUserSetting"] = "[]"
+	tables["IUserStatus"] = userStatusJSON
+	tables["IUserTutorialProgress"] = "[]"
+	tables["IUserQuest"] = "[]"
+	tables["IUserMission"] = "[]"
+	tables["IUserMainQuestFlowStatus"] = "[]"
+	tables["IUserMainQuestMainFlowStatus"] = "[]"
+	tables["IUserMainQuestProgressStatus"] = "[]"
+	tables["IUserMainQuestSeasonRoute"] = "[]"
+
+	return tables
+}

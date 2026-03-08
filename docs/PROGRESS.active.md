@@ -76,11 +76,26 @@ Minimal client patches, server-first implementation, and a clean path to the hom
   - `IUserQuest=1`
   - `IUserMission=1`
 - Confirmed by runtime/server tracing: forcing a real `RegisterUser -> Auth -> GetUserData` sequence does not change the final failure branch; registration/auth ordering is not the current blocker.
+- Confirmed by runtime tracing: when the first-entrance payload is reduced to all-empty user tables, the client takes the healthy path:
+  - `DatabaseBuilderBase.Build`
+  - non-null `bin`
+  - `DarkUserMemoryDatabase.ctor`
+  - `UserDataGet.<RequestAsync>b__11_1`
+- Current server experiment: `FirstEntranceUserDataJSONClientTables()` now sends only a minimal `IUser` row while leaving the other user tables empty, to binary-search which `IUser` field/value triggers the stall.
+- Latest result: a run with `IUser=1` and every other currently watched user table at `0` still takes `b__11_3` before `DatabaseBuilderBase.Build`, so `IUser` alone is sufficient to reproduce the failure.
+- Follow-up result: setting `PlayerId = UserId` does not change the branch; the client still takes `b__11_3` before `DatabaseBuilderBase.Build`.
+- Follow-up result: restoring `OsType = 2` and `PlatformType = 2` also does not change the branch; the client still takes `b__11_3` before `DatabaseBuilderBase.Build`.
+- Current live experiment after that result: keep the isolated `IUser` row, keep `PlayerId = UserId`, keep `OsType = 2` / `PlatformType = 2`, set `RegisterDatetime` to `nowMillis`, and keep `GameStartDatetime = 0` for first-entrance semantics.
+- Follow-up result: setting `RegisterDatetime = nowMillis` also does not change the branch; the client still takes `b__11_3` before `DatabaseBuilderBase.Build`.
+- Current live experiment after that result: keep the isolated `IUser` row, keep `PlayerId = UserId`, keep `OsType = 2` / `PlatformType = 2`, keep `RegisterDatetime = nowMillis`, and now also set `GameStartDatetime = nowMillis` to test whether the runtime rejects a pre-start `IUser` row specifically.
+- Follow-up result: setting `GameStartDatetime = nowMillis` also does not change the branch; the client still takes `b__11_3` before `DatabaseBuilderBase.Build`.
+- New conclusion: the isolated `IUser` field search is exhausted enough to deprioritize single-field `IUser` mismatches as the primary explanation.
+- Current live experiment after that result: keep a plausible non-empty `IUser` row and add back only a minimal `IUserStatus` row, while leaving the other user tables empty, to test whether non-empty `IUser` requires a companion singleton row.
 
 ## Current Blocker
-The client still stalls inside the client-side `UserDataGet.RequestAsync` flow after `GetUserDataApi.RequestAsyncMethod(list)` finishes. The flow now appears to take `UserDataGet`'s own error callback path before user DB build/publication becomes visible.
+The client still stalls inside `UserDataGet.RequestAsync`, but the latest binary-search runs proved this is a payload-content issue, not a fundamentally broken callback/orchestration path.
 
-Observed boundary:
+Observed boundary in failing runs:
 - Seen on client: `UserDataGet.RequestAsync`
 - Seen on client: `GetUserDataNameV2Api.RequestAsyncMethod`
 - Seen on client: `GetUserDataApi.RequestAsyncMethod(list)`
@@ -90,50 +105,32 @@ Observed boundary:
 - Seen on client: `TaskAwaiter<ValueTuple<string, List<Dictionary<string, object>>>[][]>.GetResult` succeed with one inner array / `106` table results
 - Seen on client: `Task.WhenAll<TResult[]>` create a `WhenAllPromise`
 - Seen on client: `<databaseBuilder>5__3` becomes non-null inside `UserDataGet.<RequestAsync>d__11.MoveNext`
-- Seen on client: the captured `<>c__DisplayClass11_0.bin` remains `<null>` through the sampled failing branch
-- Seen on client: `UserDataGet.<RequestAsync>d__11.MoveNext` finish with state `-2`
-- Seen on client: `UnitySynchronizationContext2.Post` from caller `0x361BD40`
-- Seen on client: `SendOrPostCallback.ctor(target=UserDataGet, method=<stable per run>)`
-- Seen on client: `SendOrPostCallback.Invoke(target=UserDataGet, state=<null>)`
-- Seen on client: `req=<n>` ties callback construction/post/invoke to the same `UserDataGet.RequestAsync` attempt
-- Seen on client: `InitializeDefault` installs non-null fetch handlers but leaves `OnSuccess` / `OnError` null at that point
-- Seen on client: by callback-construction time, `OnSuccess=<null>` and `OnError=HandleError`
-- Not seen on client: `FetchTargetTableMethod.Invoke`
-- Not seen on client: `FetchRecordMethod.Invoke`
-- Seen on client: focused result counts show `1` record for all currently suspected core user tables, including `IUserQuest` and `IUserMission`
-- Seen on client: `UserDataGet.<RequestAsync>b__11_3` with matching `lastPostedCallback` / `lastPostedMethod`
-- Seen on client: `UserDataGet.HandleError.Invoke`
-- Seen on client: `CalculatorNetworking.GetUserDataGetDataSource(onSuccess=<null>, onError=HandleError)`
-- Seen on client: `Title.<SyncUserData>b__0`
-- Not seen on client: `UserDataGet.HandleSuccess.Invoke`
-- Not seen on client: `DatabaseBuilderBase.Build`
-- Not seen on client: `Task.Run<DarkUserMemoryDatabase>`
-- Not seen on client: `UserDataGet.<RequestAsync>b__0`
-- Seen on client with risky hook: `DarkUserDataDatabaseBuilderAppendHelper.Append(builder, "IUser", records)` is entered once before the process crashes
-- Not yet seen on client: user DB build path (`DatabaseBuilderBase.Build`, `DarkUserMemoryDatabase`, `DatabaseDefine.set_User`)
-- Seen on client: `UserDataGet.InitializeDefault`
-- Seen on client: `UserDataGet.add_OnSuccess(value=<null>)`
-- Seen on client: `UserDataGet.add_OnError(value=HandleError)`
+- Seen on client in failing runs: `<>c__DisplayClass11_0.bin` remains `<null>`
+- Seen on client in failing runs: `UserDataGet.<RequestAsync>b__11_3`
+- Seen on client in failing runs: `UserDataGet.HandleError.Invoke`
+- Seen on client in failing runs: posted callback correlation still ties `SendOrPostCallback.ctor -> Post -> Invoke -> b__11_3`
+
+Observed boundary in the all-empty success run:
+- Seen on client: focused summary `IUser=0`, `IUserStatus=0`, `IUserGem=0`, `IUserProfile=0`, `IUserLogin=0`, `IUserLoginBonus=0`, `IUserTutorialProgress=0`, `IUserCharacter=0`, `IUserCostume=0`, `IUserWeapon=0`, `IUserCompanion=0`, `IUserDeck=0`, `IUserDeckCharacter=0`, `IUserQuest=0`, `IUserMission=0`
+- Seen on client: `DatabaseBuilderBase.Build`
+- Seen on client: non-null `<>c__DisplayClass11_0.bin` with `binLen=4006`
+- Seen on client: `UserDataGet.<RequestAsync>b__0`
+- Seen on client: `DarkUserMemoryDatabase.ctor`
+- Seen on client: `TaskAwaiter<TResult>.GetResult caller=0x361ba58 -> DarkUserMemoryDatabase`
+- Seen on client: `UserDataGet.<RequestAsync>b__11_1`
+- Not seen on client in that run: `b__11_3` / `HandleError.Invoke`
+
+Binary-search conclusion:
+- all-empty user-data baseline -> success path (`Build` -> worker -> `b__11_1`)
+- `IUser` present alone -> failure path (`b__11_3`)
+- `IUser` is now the highest-priority suspect by far
 
 That makes the likely fault window:
-- after successful fetch and successful `WhenAll` result consumption inside the compiler-generated `UserDataGet.RequestAsync` post-fetch pipeline
-- after the async method body itself reaches completion, but before any success-side callback / worker-start path becomes visible
-- likely in the callback-selection / callback-construction path that decides which `UserDataGet`-bound `SendOrPostCallback` gets posted to the main thread
-- likely before or at `SendOrPostCallback` construction time, not inside `UnitySynchronizationContext2.Post` itself
-- the currently posted callback is strongly correlated with the error-side path: the same callback object flows into `b__11_3`
-- the next concrete unknown is whether that callback is the only `SendOrPostCallback` ever constructed for the request, or whether a success-side callback is also constructed and then discarded
-- the installed fetch-handler delegates currently look less central than before: they are present, but they do not appear to be invoked in the failing branch we are tracing
-- the strongest remaining symptom is that `OnSuccess` stays null while `OnError` is present when the single posted callback is constructed
-- the worker path (`Task.Run<DarkUserMemoryDatabase>` / `UserDataGet.<RequestAsync>b__0`) now looks absent in the failing branch, so the remaining unknown is what condition prevents `databaseBuilder.Build()` / `bin` production before the error callback is chosen
-- a risky append-helper probe shows the natural flow likely reaches at least the first append dispatch for `IUser`, but append/helper hooks remain too crash-prone to trust as ongoing instrumentation
-- the next narrow boundary is whether `UserDataGet` constructs any new success/error delegates internally during the post-`WhenAll` phase before the main-thread callback is posted
-- likely using `UserDataGet`'s own error handling rather than the generic `DarkServerAPI.OnErrorRequest` path
-- likely routed through whichever caller wires the `HandleError` delegate into `GetUserDataGetDataSource`
-- title is downstream, not the root cause: `Title.<SyncUserData>b__0` appears to consume the `UserDataGet` failure by flipping its local error flag
-- `InitializeDefault` not wiring fetch handlers suggests those fields may be unused in this runtime build, or are not the source of the failure we are seeing
-- the remaining unknown is which post-await callback-selection rule causes `UserDataGet` to post the error-side callback despite successful awaits and despite currently suspected core tables being populated
-- ruled out enough to deprioritize: the simple hypothesis that the failure is caused only by obviously empty core user tables such as `IUserStatus`, `IUserProfile`, `IUserLogin`, `IUserTutorialProgress`, `IUserCharacter`, `IUserCostume`, `IUserWeapon`, `IUserCompanion`, `IUserDeck`, `IUserDeckCharacter`, `IUserQuest`, or `IUserMission`
-- ruled out enough to deprioritize: registration/auth sequencing as the primary cause of this branch
+- payload-dependent behavior inside `UserDataGet.RequestAsync` after `WhenAll.GetResult`
+- not a generic transport problem
+- not a generic main-thread callback-posting bug
+- not broad starter-party / tutorial / quest / mission seeding anymore
+- most likely an `EntityIUser` field/value mismatch for this first-entrance path
 
 ## Current Instrumentation Strategy
 Prefer narrow, low-risk hooks only:
@@ -149,61 +146,31 @@ Avoid:
 - append/helper hooks that can perturb execution or crash the process
 
 ## What We Need To Find
-- We need to confirm whether `UserDataGet.HandleSuccess.Invoke` ever fires in a healthy branch for this build.
-  If success never fires, the problem is in the orchestration/callback layer; if success fires but build still never starts, the next bug is after callback dispatch.
-- We need to determine whether `UserDataGet.<RequestAsync>b__11_1` is a success-side callback and whether it is simply absent in our failing path.
-  This helps separate "request completed but was marked failed" from "request never reached success handling at all."
-- We need to determine why `OnSuccess` remains null in this title-driven `UserDataGet` flow while `OnError` is present.
-  This should tell us whether the failure is due to missing success subscriber wiring rather than the fetched payload itself.
-- We need to determine whether `Task.Run<DarkUserMemoryDatabase>` is ever called in this branch.
-  This should tell us whether the success path fails before worker scheduling or only after the worker is queued.
-- We need to determine whether the captured `<>c__DisplayClass11_0.bin` ever becomes non-null/non-empty.
-  This should tell us whether `databaseBuilder.Build()` is skipped entirely or produces a null/empty buffer before callback selection.
-- We need to determine whether `UserDataGet` constructs any new `HandleSuccess` or `HandleError` delegates during the post-`WhenAll` phase.
-  This should tell us whether callback selection is being made by internal delegate construction before the posted `SendOrPostCallback` appears.
-- We need to map the `SendOrPostCallback` method pointer back to the corresponding managed method/thunk.
-  This should tell us whether the posted callback is directly the error-side lambda or a wrapper that later dispatches to it.
-- We need to correlate `UnitySynchronizationContext2.Post`, `SendOrPostCallback.Invoke`, and `UserDataGet.<RequestAsync>b__11_1` / `b__11_3` in the same run.
-  This should tell us whether the posted callback deterministically leads to `b__11_3` and whether a success-side callback is ever constructed at all.
-- We need to count how many `SendOrPostCallback` objects are constructed per `UserDataGet.RequestAsync` request and record their method pointers.
-  This should tell us whether the runtime only ever constructs the error-side callback in the failing branch.
-- We still may need to determine whether any non-obvious tables outside the currently seeded core set participate in the branch decision.
-  But this is now lower priority than understanding why only the error-side callback path is wired/constructed.
-- We need to determine whether `CalculatorNetworking.DisposeUserDataGetDataSource(...)` runs after the posted error callback path.
-  This should tell us whether the datasource wrapper is tearing itself down only after the failure decision is already made.
-- We need to avoid crash-prone introspection in `HandleError.Invoke`.
-  That means preferring targeted delegate/callback hooks and dump analysis over native backtraces or deep append/build hooks in this branch.
+- We need to determine whether a non-empty `IUser` row requires one or more companion singleton rows to build successfully.
+  The first candidate is `IUserStatus`, because it is a single row keyed by `UserId` and is foundational for many outgame calculations.
+- We should treat the isolated `IUser` field binary search as largely exhausted for now:
+  - `PlayerId`
+  - `OsType`
+  - `PlatformType`
+  - `RegisterDatetime`
+  - `GameStartDatetime`
+  all failed to change the branch when tested in isolation against `IUser`.
+- We should keep the safe hooks that distinguish the failing `b__11_3` path from the healthy `b__11_1` path.
+- We should avoid returning to broad table pruning unless the singleton companion-row search stops making progress.
 
 ## Why This Helps
-- If `Title.<SyncUserData>b__0` is the real error target, we can stop chasing generic networking code and focus on the title state's success/failure conditions.
-- If `Title.<SyncUserData>d__7` shows an `isError` flip right after `UserDataGet.HandleError.Invoke`, we will know the visible stall is just the title flow honoring that error flag.
-- Since filtered `Task.WhenAll(...)` logging and both await `GetResult` hooks now fire successfully, we can stop blaming transport and basic aggregation.
-- If the per-table result summary looks sane but the main-thread post still targets the error-side callback, the next investigation should stay inside runtime callback-selection logic rather than server RPC transport.
-- Since the focused summary now shows non-empty counts for the currently suspected core tables, the next useful work is no longer broad server seeding but tighter callback/post-path analysis.
-- Since `SendOrPostCallback` is now confirmed to target `UserDataGet` directly, the most likely remaining bug is in which callback `UserDataGet` constructs/posts after successful awaits.
-- Since the same callback object now correlates all the way through `ctor -> post -> invoke -> b__11_3`, the next useful work is to identify whether a success-side callback is ever constructed at all, not to keep broadening payload experiments.
-- Since fetch handlers are installed but never invoked in this failing branch, the next useful work is more likely subscriber/callback wiring analysis than delegate payload-handler analysis.
-- If `Task.Run<DarkUserMemoryDatabase>` and `DatabaseBuilderBase.Build` never fire, the failure is earlier than worker scheduling and likely decided entirely in the `MoveNext` / callback-selection path.
-- Since the append-helper probe crashes immediately after first entry, append/helper hooks should remain off the table except as a last resort.
-- If success-side callbacks never fire, the next investigation should stay inside `UserDataGet` and `CalculatorNetworking` runtime-only methods.
-- If success-side callbacks do fire, then we should move forward again toward worker scheduling and DB build/publication.
+- The all-empty run proved the build/runtime callback path is healthy in this build.
+- The latest runs reduced the payload suspect set to `IUser` alone.
+- Since the isolated `IUser` field experiments no longer move the branch, the next likely explanation is a missing companion row rather than a single bad scalar field.
 
 ## Immediate Next Checks
-- Keep the existing narrow `UserDataGet` / `Title` callback hooks, but shift the next focus to runtime orchestration rather than title ownership.
-- Keep the filtered `Task.WhenAll<TResult[]>` and await-result hooks; they have now confirmed successful aggregation.
-- Determine what caller `0x361BD40` is, and whether it is the site that constructs/posts the `UserDataGet` callback bound to the observed method pointer for the current run.
-- Correlate `SendOrPostCallback.ctor`, `UnitySynchronizationContext2.Post`, `SendOrPostCallback.Invoke`, and `UserDataGet.<RequestAsync>b__11_3` in one trace so we can prove the posted callback flows straight into the error-side method.
-- Try to identify whether any analogous `SendOrPostCallback` ever gets constructed for a success-side method / pointer in this branch.
-- Keep callback correlation state scoped per `UserDataGet.RequestAsync` so later traces are easier to compare if multiple requests happen in one session.
-- Count callback constructions per request and log all observed method pointers for `UserDataGet`-targeted `SendOrPostCallback` objects.
-- Determine where `OnSuccess` should be assigned in this runtime path, and whether that assignment simply never happens in the title flow.
-- Determine whether `Task.Run<DarkUserMemoryDatabase>` is ever entered for this request.
-- Determine whether `<>c__DisplayClass11_0.bin` is ever populated before the error callback is posted.
-- Watch `UserDataGet.HandleSuccess.ctor` / `UserDataGet.HandleError.ctor` as a safer way to see internal callback selection.
-- Keep `DisposeUserDataGetDataSource(...)` tracing in place, but deprioritize further bulk user-table seeding unless a new focused result points to another concrete missing table.
-- Trace `CalculatorNetworking.DisposeUserDataGetDataSource(...)` to see whether teardown happens only after the same failing branch has already been selected.
-- Determine whether `UserDataGet.HandleSuccess.Invoke` ever fires in a healthy branch.
-- Keep watching `UserDataGet.<RequestAsync>b__11_1(object _)` versus `UserDataGet.<RequestAsync>b__11_3(object _)`.
-- Determine whether the user DB worker lambda `UserDataGet.<RequestAsync>b__0()` is ever entered without risky append hooks.
-- If the worker starts, trace forward to `DatabaseBuilderBase.Build`, `DarkUserMemoryDatabase.ctor`, and `DatabaseDefine.set_User`.
-- If the worker still never starts, keep focus on the internal `UserDataGet.RequestAsync` callback/fan-out path rather than server payload transport.
+- Keep a plausible non-empty `IUser` row and add back only `IUserStatus`.
+- If that still fails, test the next most likely singleton companion rows:
+  - `IUserProfile`
+  - `IUserLogin`
+  - `IUserSetting`
+- If adding one singleton row succeeds, then walk `IUser` back toward true first-entrance semantics from that successful baseline.
+- Keep the safe hooks that show:
+  - `DatabaseBuilderBase.Build`
+  - `binLen`
+  - `b__11_1` vs `b__11_3`
