@@ -58,7 +58,10 @@ func (s *UserServiceServer) GameStart(ctx context.Context, _ *emptypb.Empty) (*p
 	}
 
 	return &pb.GameStartResponse{
-		DiffUserData: mock.StartedDiff(mock.DefaultUserID),
+		// Temporarily keep GameStart diff empty to isolate post-name crashes from
+		// the started-account baseline payload. Register/Auth/GetUserData already
+		// seed the state we need to reach this point.
+		DiffUserData: mock.EmptyDiff(),
 	}, nil
 }
 
