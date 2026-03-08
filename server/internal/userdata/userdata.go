@@ -563,6 +563,38 @@ func FirstEntranceUserDataJSONClientTables(userID int64) map[string]string {
 		StaminaUpdateDatetime: nowMillis,
 		LatestVersion:         0,
 	})
+	userProfileJSON, _ := encodeJSONRecords(&EntityIUserProfile{
+		UserId:                          userID,
+		Name:                            "Un-regist User Name",
+		NameUpdateDatetime:              nowMillis,
+		Message:                         "",
+		MessageUpdateDatetime:           nowMillis,
+		FavoriteCostumeId:               0,
+		FavoriteCostumeIdUpdateDatetime: nowMillis,
+		LatestVersion:                   0,
+	})
+	userLoginJSON, _ := encodeJSONRecords(&EntityIUserLogin{
+		UserId:                    userID,
+		TotalLoginCount:           1,
+		ContinualLoginCount:       1,
+		MaxContinualLoginCount:    1,
+		LastLoginDatetime:         nowMillis,
+		LastComebackLoginDatetime: 0,
+		LatestVersion:             0,
+	})
+	userSettingJSON, _ := encodeJSONRecords(&EntityIUserSetting{
+		UserId:                userID,
+		IsNotifyPurchaseAlert: false,
+		LatestVersion:         0,
+	})
+	userLoginBonusJSON, _ := encodeJSONRecords(&EntityIUserLoginBonus{
+		UserId:                      userID,
+		LoginBonusId:                1,
+		CurrentPageNumber:           1,
+		CurrentStampNumber:          0,
+		LatestRewardReceiveDatetime: 0,
+		LatestVersion:               0,
+	})
 	tables["IUser"] = userJSON
 	tables["IUserCharacter"] = "[]"
 	tables["IUserCostume"] = "[]"
@@ -571,10 +603,10 @@ func FirstEntranceUserDataJSONClientTables(userID int64) map[string]string {
 	tables["IUserDeckCharacter"] = "[]"
 	tables["IUserDeck"] = "[]"
 	tables["IUserGem"] = "[]"
-	tables["IUserProfile"] = "[]"
-	tables["IUserLogin"] = "[]"
-	tables["IUserLoginBonus"] = "[]"
-	tables["IUserSetting"] = "[]"
+	tables["IUserProfile"] = userProfileJSON
+	tables["IUserLogin"] = userLoginJSON
+	tables["IUserLoginBonus"] = userLoginBonusJSON
+	tables["IUserSetting"] = userSettingJSON
 	tables["IUserStatus"] = userStatusJSON
 	tables["IUserTutorialProgress"] = "[]"
 	tables["IUserQuest"] = "[]"

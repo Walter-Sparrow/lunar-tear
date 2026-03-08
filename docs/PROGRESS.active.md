@@ -91,9 +91,24 @@ Minimal client patches, server-first implementation, and a clean path to the hom
 - Follow-up result: setting `GameStartDatetime = nowMillis` also does not change the branch; the client still takes `b__11_3` before `DatabaseBuilderBase.Build`.
 - New conclusion: the isolated `IUser` field search is exhausted enough to deprioritize single-field `IUser` mismatches as the primary explanation.
 - Current live experiment after that result: keep a plausible non-empty `IUser` row and add back only a minimal `IUserStatus` row, while leaving the other user tables empty, to test whether non-empty `IUser` requires a companion singleton row.
+- Follow-up result: `IUser + IUserStatus` still takes `b__11_3`, so `IUserStatus` alone is not the missing companion row.
+- New alternate path from the sibling project/dev note: enable the hidden title menu, enter the transfer flow via Square Bridge, and watch whether the runtime moves past `set_User` but still stalls at 40%.
+- Transfer-flow result with the forced title menu: the client does reach `GetBackupToken` and `TransferUser`, then continues into `Auth -> GetLatestMasterDataVersion -> GetUserDataNameV2 -> GetUserData`, but still falls into the same `UserDataGet.<RequestAsync>b__11_3` path.
+- In that transfer-flow run, `DatabaseDefine.set_User` is still not seen before the stall, so transfer does not currently move us past the existing user-data build boundary.
+- Current live experiment after that result: keep `IUser` and `IUserStatus`, and add back only `IUserProfile` as the next singleton companion row.
+- Follow-up result: `IUser + IUserStatus + IUserProfile` still takes `b__11_3`, so `IUserProfile` alone is not the missing singleton companion either.
+- Current live experiment after that result: keep `IUser`, `IUserStatus`, and `IUserProfile`, and add back only `IUserLogin` as the next singleton companion row.
+- Follow-up result: adding `IUserLogin` still ends in `Title.<SyncUserData>b__0` flipping `isError` to `true`, so `IUserLogin` alone is not the missing singleton companion either.
+- Current live experiment after that result: keep `IUser`, `IUserStatus`, `IUserProfile`, and `IUserLogin`, and add back only `IUserSetting` as the next singleton companion row.
+- Follow-up result: adding `IUserSetting` still ends in `Title.<SyncUserData>b__0` flipping `isError` to `true`, so `IUserSetting` alone is not the missing singleton companion either.
+- Current live experiment after that result: keep `IUser`, `IUserStatus`, `IUserProfile`, `IUserLogin`, and `IUserSetting`, and add back only `IUserLoginBonus` as the next singleton companion row.
+- Assembly result: the hot call at `0x361B930` in `UserDataGet.<RequestAsync>d__11.MoveNext` resolves to `DarkUserDataDatabaseBuilderAppendHelper.Append(...)` at RVA `0x28F06C8`.
+- Assembly result: the later call at `0x361B968` resolves to `DatabaseBuilderBase.Build()` at RVA `0x3BDBD90`.
+- New conclusion from those branch-target dumps: the failure boundary is now narrowed to the append-helper path itself, before `DatabaseBuilderBase.Build()` starts.
+- New conclusion from the earlier `WhenAll` dump: outer/inner array shape checks pass before the append-helper call, so this is no longer a `WhenAll`/transport/null-array problem.
 
 ## Current Blocker
-The client still stalls inside `UserDataGet.RequestAsync`, but the latest binary-search runs proved this is a payload-content issue, not a fundamentally broken callback/orchestration path.
+The client still stalls inside `UserDataGet.RequestAsync`, but the latest assembly work narrowed the failing boundary further: the request gets through `WhenAll` and reaches the per-table append-helper call, then later ends up posting the error callback before `DatabaseBuilderBase.Build()` ever runs.
 
 Observed boundary in failing runs:
 - Seen on client: `UserDataGet.RequestAsync`
@@ -105,7 +120,11 @@ Observed boundary in failing runs:
 - Seen on client: `TaskAwaiter<ValueTuple<string, List<Dictionary<string, object>>>[][]>.GetResult` succeed with one inner array / `106` table results
 - Seen on client: `Task.WhenAll<TResult[]>` create a `WhenAllPromise`
 - Seen on client: `<databaseBuilder>5__3` becomes non-null inside `UserDataGet.<RequestAsync>d__11.MoveNext`
+- Seen in assembly/runtime correlation: the `WhenAll` result branch at `0x361B8AC` only performs array/null/length guards before entering the tuple loop
+- Seen in assembly/runtime correlation: the tuple loop calls `DarkUserDataDatabaseBuilderAppendHelper.Append(...)` at `0x28F06C8` via the callsite at `0x361B930`
 - Seen on client in failing runs: `<>c__DisplayClass11_0.bin` remains `<null>`
+- Not seen on client in failing runs: `DatabaseBuilderBase.Build`
+- Seen in assembly/runtime correlation: `DatabaseBuilderBase.Build()` would be called later via `0x361B968`, but the failing path never reaches that point
 - Seen on client in failing runs: `UserDataGet.<RequestAsync>b__11_3`
 - Seen on client in failing runs: `UserDataGet.HandleError.Invoke`
 - Seen on client in failing runs: posted callback correlation still ties `SendOrPostCallback.ctor -> Post -> Invoke -> b__11_3`
@@ -126,11 +145,16 @@ Binary-search conclusion:
 - `IUser` is now the highest-priority suspect by far
 
 That makes the likely fault window:
-- payload-dependent behavior inside `UserDataGet.RequestAsync` after `WhenAll.GetResult`
+- payload-dependent behavior inside `DarkUserDataDatabaseBuilderAppendHelper.Append(...)`
+- after `WhenAll.GetResult`
+- before `DatabaseBuilderBase.Build()`
 - not a generic transport problem
 - not a generic main-thread callback-posting bug
-- not broad starter-party / tutorial / quest / mission seeding anymore
-- most likely an `EntityIUser` field/value mismatch for this first-entrance path
+- not broad `WhenAll` array-shape/null guarding
+- likely either:
+  - append-helper dispatch on `tableName`
+  - per-table JSON-to-entity conversion inside append helper
+  - append-helper exception/fallback path before build
 
 ## Current Instrumentation Strategy
 Prefer narrow, low-risk hooks only:
@@ -146,8 +170,11 @@ Avoid:
 - append/helper hooks that can perturb execution or crash the process
 
 ## What We Need To Find
-- We need to determine whether a non-empty `IUser` row requires one or more companion singleton rows to build successfully.
-  The first candidate is `IUserStatus`, because it is a single row keyed by `UserId` and is foundational for many outgame calculations.
+- We need to understand what `DarkUserDataDatabaseBuilderAppendHelper.Append(...)` is doing with the first tables in the tuple loop.
+  The new highest-value question is whether append-helper dispatch/conversion throws or rejects one of the early tables before build starts.
+- We still may need to test more singleton companions later, but that is now lower priority than append-helper control flow.
+- We also need to test the transfer-flow path with the forced title menu visible.
+  If transfer still stalls after `set_User`, that would shift the investigation beyond the current first-entrance payload boundary.
 - We should treat the isolated `IUser` field binary search as largely exhausted for now:
   - `PlayerId`
   - `OsType`
@@ -156,20 +183,24 @@ Avoid:
   - `GameStartDatetime`
   all failed to change the branch when tested in isolation against `IUser`.
 - We should keep the safe hooks that distinguish the failing `b__11_3` path from the healthy `b__11_1` path.
-- We should avoid returning to broad table pruning unless the singleton companion-row search stops making progress.
+- We should avoid returning to broad table pruning unless append-helper disassembly stops producing new information.
 
 ## Why This Helps
 - The all-empty run proved the build/runtime callback path is healthy in this build.
 - The latest runs reduced the payload suspect set to `IUser` alone.
-- Since the isolated `IUser` field experiments no longer move the branch, the next likely explanation is a missing companion row rather than a single bad scalar field.
+- The latest assembly result proves the branch decision is later and more concrete than before: the runtime reaches append-helper dispatch and fails before build.
+- Since the isolated `IUser` field experiments no longer move the branch, append-helper control flow is now a better target than more blind row combinations.
 
 ## Immediate Next Checks
-- Keep a plausible non-empty `IUser` row and add back only `IUserStatus`.
-- If that still fails, test the next most likely singleton companion rows:
-  - `IUserProfile`
-  - `IUserLogin`
-  - `IUserSetting`
-- If adding one singleton row succeeds, then walk `IUser` back toward true first-entrance semantics from that successful baseline.
+- Dump and inspect more of `DarkUserDataDatabaseBuilderAppendHelper.Append(...)` around RVA `0x28F06C8`.
+- Determine whether the helper is:
+  - dispatching by `tableName` and failing lookup
+  - converting JSON dictionaries into typed entities and throwing there
+  - or branching into a dedicated exception/fallback path before build
+- Keep singleton-row experiments deprioritized until the append-helper disassembly is understood.
+- Use the forced title-menu hook to try the transfer flow and compare:
+  - whether `DatabaseDefine.set_User` fires
+  - whether the client still hangs afterward
 - Keep the safe hooks that show:
   - `DatabaseBuilderBase.Build`
   - `binLen`

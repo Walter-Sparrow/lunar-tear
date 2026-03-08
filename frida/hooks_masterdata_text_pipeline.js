@@ -18,6 +18,8 @@ let userDataRequestSeq = 0;
 let activeUserDataRequestId = 0;
 let userDataCallbackCtorSeq = 0;
 let userDataCallbackMethodsSeen = [];
+let isInitializingTitleMenuButton = false;
+let userDataAsmDumpedAtRuntime = false;
 
 function awaitLibil2cpp(callback) {
   if (globalThis._masterDataTextHooksInstalled) return;
@@ -391,12 +393,47 @@ function dumpInstructionWindow(label, centerOffset, beforeCount, afterCount) {
   }
 }
 
+function dumpBranchTargetWindow(label, branchOffset, beforeCount, afterCount) {
+  try {
+    const branchAddr = libil2cpp.add(branchOffset);
+    const insn = Instruction.parse(branchAddr);
+    const match = insn.opStr.match(/#?(0x[0-9a-fA-F]+)/);
+    if (!match) {
+      console.log(`[UserDB] ${label} could not parse target from 0x${branchOffset.toString(16)}: ${insn.mnemonic} ${insn.opStr}`);
+      return;
+    }
+    const targetAddr = ptr(match[1]);
+    const targetOffset = targetAddr.sub(libil2cpp).toUInt32();
+    console.log(
+      `[UserDB] ${label} branch 0x${branchOffset.toString(16)} -> ${pointerLocationSummary(targetAddr)} targetOffset=0x${targetOffset.toString(16)}`,
+    );
+    dumpInstructionWindow(`${label} target`, targetOffset, beforeCount, afterCount);
+  } catch (error) {
+    console.log(`[UserDB] ${label} branch-target dump failed: ${error}`);
+  }
+}
+
 function logDivider(label) {
   console.log(`\n==== ${label} ====`);
 }
 
 awaitLibil2cpp(() => {
   logDivider('Master DB Hooks');
+  dumpInstructionWindow('UserDataGet.InitializeDefault', 0x361acb0, 6, 12);
+  dumpInstructionWindow('UserDataGet.RequestAsync entry', 0x361ad5c, 6, 12);
+  dumpInstructionWindow('UserDataGet success callback', 0x361ae60, 6, 16);
+  dumpInstructionWindow('UserDataGet worker lambda', 0x361b5b0, 6, 20);
+  dumpInstructionWindow('UserDataGet.WhenAll result branch', 0x361b8ac, 16, 24);
+  dumpInstructionWindow('UserDataGet tuple loop body', 0x361b920, 16, 32);
+  dumpInstructionWindow('UserDataGet tuple loop branch A', 0x361b948, 12, 20);
+  dumpInstructionWindow('UserDataGet tuple loop branch B', 0x361bb30, 12, 24);
+  dumpInstructionWindow('UserDataGet tuple loop branch C', 0x361bbf0, 12, 24);
+  dumpInstructionWindow('Append helper entry body', 0x28f06c8, 8, 48);
+  dumpInstructionWindow('Append helper dispatch area', 0x28f0730, 8, 56);
+  dumpInstructionWindow('Append helper late branch', 0x28f0794, 8, 40);
+  dumpBranchTargetWindow('UserDataGet append helper call', 0x361b930, 12, 28);
+  dumpBranchTargetWindow('UserDataGet build/bin call', 0x361b968, 12, 28);
+  dumpInstructionWindow('UserDataGet error callback', 0x361b318, 6, 16);
   dumpInstructionWindow('UserData post callsite', 0x361bd3c, 10, 6);
 
   // Master data RPC / response / downloader flow.
@@ -536,6 +573,25 @@ awaitLibil2cpp(() => {
   // User data hand-off after master data succeeds.
   hook('UserDataGet.RequestAsync', 0x361ad5c, {
     onEnter(args) {
+      if (!userDataAsmDumpedAtRuntime) {
+        userDataAsmDumpedAtRuntime = true;
+        dumpInstructionWindow('UserDataGet.InitializeDefault(runtime)', 0x361acb0, 6, 12);
+        dumpInstructionWindow('UserDataGet.RequestAsync entry(runtime)', 0x361ad5c, 6, 12);
+        dumpInstructionWindow('UserDataGet success callback(runtime)', 0x361ae60, 6, 16);
+        dumpInstructionWindow('UserDataGet worker lambda(runtime)', 0x361b5b0, 6, 20);
+        dumpInstructionWindow('UserDataGet.WhenAll result branch(runtime)', 0x361b8ac, 16, 24);
+        dumpInstructionWindow('UserDataGet tuple loop body(runtime)', 0x361b920, 16, 32);
+        dumpInstructionWindow('UserDataGet tuple loop branch A(runtime)', 0x361b948, 12, 20);
+        dumpInstructionWindow('UserDataGet tuple loop branch B(runtime)', 0x361bb30, 12, 24);
+        dumpInstructionWindow('UserDataGet tuple loop branch C(runtime)', 0x361bbf0, 12, 24);
+        dumpInstructionWindow('Append helper entry body(runtime)', 0x28f06c8, 8, 48);
+        dumpInstructionWindow('Append helper dispatch area(runtime)', 0x28f0730, 8, 56);
+        dumpInstructionWindow('Append helper late branch(runtime)', 0x28f0794, 8, 40);
+        dumpBranchTargetWindow('UserDataGet append helper call(runtime)', 0x361b930, 12, 28);
+        dumpBranchTargetWindow('UserDataGet build/bin call(runtime)', 0x361b968, 12, 28);
+        dumpInstructionWindow('UserDataGet error callback(runtime)', 0x361b318, 6, 16);
+        dumpInstructionWindow('UserData post callsite(runtime)', 0x361bd3c, 10, 6);
+      }
       userDataRequestSeq += 1;
       activeUserDataRequestId = userDataRequestSeq;
       lastUserDataPostCallback = null;
@@ -1020,6 +1076,24 @@ awaitLibil2cpp(() => {
       console.log(
         `[UserDB] Title.<SyncUserData>d__7.MoveNext completed self=${pointerSummary(this.self)} state=${state} displayClass=${pointerSummary(displayClass)} isError=${isError}`,
       );
+    },
+  });
+
+  // Keep the hidden title menu visible so we can reach transfer/webview flow.
+  hook('TitleScreen.InitializeMenuButton', 0x2f11900, {
+    onEnter() {
+      isInitializingTitleMenuButton = true;
+    },
+    onLeave() {
+      isInitializingTitleMenuButton = false;
+    },
+  });
+
+  hook('CanvasGroupExtensions.SetActive(Title menu)', 0x2d257dc, {
+    onEnter(args) {
+      if (!isInitializingTitleMenuButton) return;
+      args[1] = ptr(1);
+      console.log('[TitleMenu] force menu button visible');
     },
   });
 
