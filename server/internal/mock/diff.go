@@ -5,8 +5,6 @@ import (
 	"lunar-tear/server/internal/userdata"
 )
 
-const startedDiffBisectGroup = "profileOnly"
-
 // EmptyDiff returns an empty DiffUserData map (no table updates).
 // Use when the RPC has nothing to sync.
 func EmptyDiff() map[string]*pb.DiffData {
@@ -35,12 +33,12 @@ func StartedDiff(userID int64) map[string]*pb.DiffData {
 	return out
 }
 
-// StartedMinimalDiff returns only the starter rows needed to get past title
-// completion into the first outgame flow, while keeping risky account/core rows
-// such as IUser out of the post-GameStart diff.
-func StartedMinimalDiff(userID int64) map[string]*pb.DiffData {
+// StartedGameStartDiff returns the currently trusted post-GameStart starter rows.
+// Keep risky account/core rows such as IUser out of the GameStart diff and let
+// GetUserData provide those during the earlier sync phase.
+func StartedGameStartDiff(userID int64) map[string]*pb.DiffData {
 	tables := userdata.DefaultUserDataJSONClientTables(userID)
-	groupA := []string{
+	selected := []string{
 		"IUserProfile",
 		"IUserCharacter",
 		"IUserCostume",
@@ -48,26 +46,6 @@ func StartedMinimalDiff(userID int64) map[string]*pb.DiffData {
 		"IUserCompanion",
 		"IUserDeckCharacter",
 		"IUserDeck",
-	}
-	groupA1 := []string{
-		"IUserProfile",
-		"IUserCharacter",
-		"IUserCostume",
-	}
-	profileOnly := []string{
-		"IUserProfile",
-	}
-	characterCostumeOnly := []string{
-		"IUserCharacter",
-		"IUserCostume",
-	}
-	groupA2 := []string{
-		"IUserWeapon",
-		"IUserCompanion",
-		"IUserDeckCharacter",
-		"IUserDeck",
-	}
-	groupB := []string{
 		"IUserMission",
 		"IUserMainQuestFlowStatus",
 		"IUserMainQuestMainFlowStatus",
@@ -75,24 +53,6 @@ func StartedMinimalDiff(userID int64) map[string]*pb.DiffData {
 		"IUserMainQuestSeasonRoute",
 		"IUserQuest",
 		"IUserTutorialProgress",
-	}
-
-	selected := groupA
-	switch startedDiffBisectGroup {
-	case "profileOnly":
-		selected = profileOnly
-	case "characterCostumeOnly":
-		selected = characterCostumeOnly
-	case "groupA1":
-		selected = groupA1
-	case "groupA2":
-		selected = groupA2
-	case "groupB":
-		selected = groupB
-	case "full":
-		selected = append(append([]string{}, groupA...), groupB...)
-	case "empty":
-		selected = nil
 	}
 
 	out := make(map[string]*pb.DiffData, len(selected))

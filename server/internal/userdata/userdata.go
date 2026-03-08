@@ -340,31 +340,31 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		IsNotifyPurchaseAlert: false,
 		LatestVersion:         0,
 	})
-	mainQuestFlowJSON, _ := encodeJSONRecords(&EntityIUserMainQuestFlowStatus{
-		UserId:               userID,
-		CurrentQuestFlowType: 1,
-		LatestVersion:        0,
+	mainQuestFlowJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":               userID,
+		"currentQuestFlowType": 1,
+		"latestVersion":        0,
 	})
-	mainQuestMainFlowJSON, _ := encodeJSONRecords(&EntityIUserMainQuestMainFlowStatus{
-		UserId:                  userID,
-		CurrentMainQuestRouteId: 1,
-		CurrentQuestSceneId:     1,
-		HeadQuestSceneId:        1,
-		IsReachedLastQuestScene: false,
-		LatestVersion:           0,
+	mainQuestMainFlowJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":                  userID,
+		"currentMainQuestRouteId": 1,
+		"currentQuestSceneId":     1,
+		"headQuestSceneId":        1,
+		"isReachedLastQuestScene": false,
+		"latestVersion":           0,
 	})
-	mainQuestProgressJSON, _ := encodeJSONRecords(&EntityIUserMainQuestProgressStatus{
-		UserId:               userID,
-		CurrentQuestSceneId:  1,
-		HeadQuestSceneId:     1,
-		CurrentQuestFlowType: 1,
-		LatestVersion:        0,
+	mainQuestProgressJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":               userID,
+		"currentQuestSceneId":  1,
+		"headQuestSceneId":     1,
+		"currentQuestFlowType": 1,
+		"latestVersion":        0,
 	})
-	mainQuestSeasonRouteJSON, _ := encodeJSONRecords(&EntityIUserMainQuestSeasonRoute{
-		UserId:            userID,
-		MainQuestSeasonId: 1,
-		MainQuestRouteId:  1,
-		LatestVersion:     0,
+	mainQuestSeasonRouteJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":            userID,
+		"mainQuestSeasonId": 1,
+		"mainQuestRouteId":  1,
+		"latestVersion":     0,
 	})
 	userStatusJSON, _ := encodeJSONMaps(map[string]any{
 		"userId":                userID,
@@ -390,65 +390,65 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		"favoriteCostumeIdUpdateDatetime": nowMillis,
 		"latestVersion":                   0,
 	})
-	userCharacterJSON, _ := encodeJSONRecords(&EntityIUserCharacter{
-		UserId:        userID,
-		CharacterId:   starterCharacterID,
-		Level:         1,
-		Exp:           0,
-		LatestVersion: 0,
+	userCharacterJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":        userID,
+		"characterId":   starterCharacterID,
+		"level":         1,
+		"exp":           0,
+		"latestVersion": 0,
 	})
-	userCostumeJSON, _ := encodeJSONRecords(&EntityIUserCostume{
-		UserId:              userID,
-		UserCostumeUuid:     starterCostumeUUID,
-		CostumeId:           starterCostumeID,
-		LimitBreakCount:     0,
-		Level:               1,
-		Exp:                 0,
-		HeadupDisplayViewId: 0,
-		AcquisitionDatetime: nowMillis,
-		AwakenCount:         0,
-		LatestVersion:       0,
+	userCostumeJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":              userID,
+		"userCostumeUuid":     starterCostumeUUID,
+		"costumeId":           starterCostumeID,
+		"limitBreakCount":     0,
+		"level":               1,
+		"exp":                 0,
+		"headupDisplayViewId": 0,
+		"acquisitionDatetime": nowMillis,
+		"awakenCount":         0,
+		"latestVersion":       0,
 	})
-	userWeaponJSON, _ := encodeJSONRecords(&EntityIUserWeapon{
-		UserId:              userID,
-		UserWeaponUuid:      starterWeaponUUID,
-		WeaponId:            starterWeaponID,
-		Level:               1,
-		Exp:                 0,
-		LimitBreakCount:     0,
-		IsProtected:         false,
-		AcquisitionDatetime: nowMillis,
-		LatestVersion:       0,
+	userWeaponJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":              userID,
+		"userWeaponUuid":      starterWeaponUUID,
+		"weaponId":            starterWeaponID,
+		"level":               1,
+		"exp":                 0,
+		"limitBreakCount":     0,
+		"isProtected":         false,
+		"acquisitionDatetime": nowMillis,
+		"latestVersion":       0,
 	})
-	userCompanionJSON, _ := encodeJSONRecords(&EntityIUserCompanion{
-		UserId:              userID,
-		UserCompanionUuid:   starterCompanionUUID,
-		CompanionId:         starterCompanionID,
-		HeadupDisplayViewId: 0,
-		Level:               1,
-		AcquisitionDatetime: nowMillis,
-		LatestVersion:       0,
+	userCompanionJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":              userID,
+		"userCompanionUuid":   starterCompanionUUID,
+		"companionId":         starterCompanionID,
+		"headupDisplayViewId": 0,
+		"level":               1,
+		"acquisitionDatetime": nowMillis,
+		"latestVersion":       0,
 	})
-	userDeckCharacterJSON, _ := encodeJSONRecords(&EntityIUserDeckCharacter{
-		UserId:                userID,
-		UserDeckCharacterUuid: starterDeckCharacterUUID,
-		UserCostumeUuid:       starterCostumeUUID,
-		MainUserWeaponUuid:    starterWeaponUUID,
-		UserCompanionUuid:     starterCompanionUUID,
-		Power:                 100,
-		UserThoughtUuid:       "",
-		LatestVersion:         0,
+	userDeckCharacterJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":                userID,
+		"userDeckCharacterUuid": starterDeckCharacterUUID,
+		"userCostumeUuid":       starterCostumeUUID,
+		"mainUserWeaponUuid":    starterWeaponUUID,
+		"userCompanionUuid":     starterCompanionUUID,
+		"power":                 100,
+		"userThoughtUuid":       "",
+		"latestVersion":         0,
 	})
-	userDeckJSON, _ := encodeJSONRecords(&EntityIUserDeck{
-		UserId:                  userID,
-		DeckType:                questDeckType,
-		UserDeckNumber:          1,
-		UserDeckCharacterUuid01: starterDeckCharacterUUID,
-		UserDeckCharacterUuid02: "",
-		UserDeckCharacterUuid03: "",
-		Name:                    "Deck 1",
-		Power:                   100,
-		LatestVersion:           0,
+	userDeckJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":                  userID,
+		"deckType":                questDeckType,
+		"userDeckNumber":          1,
+		"userDeckCharacterUuid01": starterDeckCharacterUUID,
+		"userDeckCharacterUuid02": "",
+		"userDeckCharacterUuid03": "",
+		"name":                    "Deck 1",
+		"power":                   100,
+		"latestVersion":           0,
 	})
 	userLoginJSON, _ := encodeJSONRecords(&EntityIUserLogin{
 		UserId:                    userID,
@@ -467,33 +467,33 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		LatestRewardReceiveDatetime: 0,
 		LatestVersion:               0,
 	})
-	userTutorialProgressJSON, _ := encodeJSONRecords(&EntityIUserTutorialProgress{
-		UserId:        userID,
-		TutorialType:  1,
-		ProgressPhase: 0,
-		ChoiceId:      0,
-		LatestVersion: 0,
+	userTutorialProgressJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":        userID,
+		"tutorialType":  1,
+		"progressPhase": 0,
+		"choiceId":      0,
+		"latestVersion": 0,
 	})
-	userQuestJSON, _ := encodeJSONRecords(&EntityIUserQuest{
-		UserId:              userID,
-		QuestId:             starterQuestID,
-		QuestStateType:      0,
-		IsBattleOnly:        false,
-		LatestStartDatetime: nowMillis,
-		ClearCount:          0,
-		DailyClearCount:     0,
-		LastClearDatetime:   0,
-		ShortestClearFrames: 0,
-		LatestVersion:       0,
+	userQuestJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":              userID,
+		"questId":             starterQuestID,
+		"questStateType":      0,
+		"isBattleOnly":        false,
+		"latestStartDatetime": nowMillis,
+		"clearCount":          0,
+		"dailyClearCount":     0,
+		"lastClearDatetime":   0,
+		"shortestClearFrames": 0,
+		"latestVersion":       0,
 	})
-	userMissionJSON, _ := encodeJSONRecords(&EntityIUserMission{
-		UserId:                    userID,
-		MissionId:                 starterMissionID,
-		StartDatetime:             nowMillis,
-		ProgressValue:             0,
-		MissionProgressStatusType: missionInProgress,
-		ClearDatetime:             0,
-		LatestVersion:             0,
+	userMissionJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":                    userID,
+		"missionId":                 starterMissionID,
+		"startDatetime":             nowMillis,
+		"progressValue":             0,
+		"missionProgressStatusType": missionInProgress,
+		"clearDatetime":             0,
+		"latestVersion":             0,
 	})
 
 	return map[string]string{

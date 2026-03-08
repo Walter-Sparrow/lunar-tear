@@ -28,23 +28,42 @@ Reach the first playable/home flow with minimal client patching and a server-fir
 ## What Was Proven About `GameStart`
 - The old immediate `GameStart` crash was inside `UserDiffUpdateInterceptor` while applying `DiffUserData`.
 - The following `GameStart` payload details are now required for the current passing boundary:
-  - `DiffUserData["IUserProfile"].UpdateRecordsJson` must contain a real profile row, not `"[]"`
-  - `IUserProfile` JSON must use lower-camel keys:
-    - `userId`
-    - `name`
-    - `nameUpdateDatetime`
-    - `message`
-    - `messageUpdateDatetime`
-    - `favoriteCostumeId`
-    - `favoriteCostumeIdUpdateDatetime`
-    - `latestVersion`
-  - `IUserProfile` datetime fields must be plain unix-millis scalars
-  - `DiffUserData["IUserProfile"].DeleteKeysJson` must be explicitly set to `"[]"`
+  - `DiffUserData[*].DeleteKeysJson` must be explicitly set to `"[]"`
+  - The currently trusted `GameStart` table set is:
+    - `IUserProfile`
+    - `IUserCharacter`
+    - `IUserCostume`
+    - `IUserWeapon`
+    - `IUserCompanion`
+    - `IUserDeckCharacter`
+    - `IUserDeck`
+    - `IUserMission`
+    - `IUserMainQuestFlowStatus`
+    - `IUserMainQuestMainFlowStatus`
+    - `IUserMainQuestProgressStatus`
+    - `IUserMainQuestSeasonRoute`
+    - `IUserQuest`
+    - `IUserTutorialProgress`
+  - All currently enabled `GameStart` tables that are consumed through runtime `Dictionary<string, object>` paths must use lower-camel keys.
+  - All datetime-like fields proven so far in these rows must stay plain unix-millis scalars.
 - Runtime proof from Frida:
   - `DiffEnumerator.MoveNext -> true`
   - `ToImmutableBuilder -> DarkUserImmutableBuilder`
   - `EntityIUserProfile.ctor(dict)` completes
   - `Diff(IUserProfile[])` completes
+  - `Diff(IUserCharacter[])` completes
+  - `Diff(IUserCostume[])` completes
+  - `Diff(IUserWeapon[])` completes
+  - `Diff(IUserCompanion[])` completes
+  - `Diff(IUserDeckCharacter[])` completes
+  - `Diff(IUserDeck[])` completes
+  - `Diff(IUserMission[])` completes
+  - `Diff(IUserMainQuestFlowStatus[])` completes
+  - `Diff(IUserMainQuestMainFlowStatus[])` completes
+  - `Diff(IUserMainQuestProgressStatus[])` completes
+  - `Diff(IUserMainQuestSeasonRoute[])` completes
+  - `Diff(IUserQuest[])` completes
+  - `Diff(IUserTutorialProgress[])` completes
   - `DiffEnumerator.MoveNext -> false`
   - `TaskAwaiter<TResult>.GetResult -> GameStartResponse`
   - title FSM then continues into `CheckResolutionSetting`, `OnGraphicQualitySetting`, and `OnFinish`
@@ -53,11 +72,12 @@ Reach the first playable/home flow with minimal client patching and a server-fir
 - `RegisterUser` / `Auth` still seed baseline diff data.
 - `GetUserDataNameV2` includes the account/core tables again with corrected JSON shapes.
 - `GameStart()` no longer returns full `StartedDiff()`.
-- `GameStart()` currently returns `StartedMinimalDiff()` in a tight bisect configuration:
-  - selected group: `profileOnly`
-  - current table set: `IUserProfile`
-  - current row detail: `favoriteCostumeId = 0`
-  - current diff detail: `DeleteKeysJson = "[]"`
+- `GameStart()` now always returns the trusted starter diff via `StartedGameStartDiff()`.
+- `GameStart()` currently sends the 14-table starter/outgame set proven above.
+- Current row detail retained from the earlier safe boundary:
+  - `IUserProfile.favoriteCostumeId = 0`
+- Current diff detail:
+  - every enabled `DiffData` row sets `DeleteKeysJson = "[]"`
 - `GameStart()` currently sends common-response trailers:
   - `x-apb-response-datetime`
   - `x-apb-update-user-data-names`
@@ -78,19 +98,12 @@ What is now proven:
 ## Current Concern
 The new blocker is no longer JSON shape or interceptor diff application.
 
-The likely issue is now missing required starter outgame state after title completion.
+The likely issue is now the first post-title continuation after `Title.OnFinish`, not missing `GameStart` starter rows.
 
 Working hypothesis:
-- `profileOnly` is enough to get past `GameStart` apply logic.
-- The first post-title flow still needs a minimal gameplay/outgame set that is not yet present.
-- The next safest tables to add back are the smallest identity/loadout tables first:
-  - `IUserCharacter`
-  - `IUserCostume`
-- After that, if needed:
-  - `IUserWeapon`
-  - `IUserCompanion`
-  - `IUserDeckCharacter`
-  - `IUserDeck`
+- The currently trusted 14-table `GameStart` diff is sufficient to get through diff application and title completion.
+- The process still crashes after `Title.OnFinish -> UniTaskCompletionSource`, during the first outgame startup step that follows title completion.
+- The next investigation should focus on the post-`OnFinish` handoff rather than adding more `GameStart` tables.
 
 ## Active Instrumentation
 Primary script: `frida/hooks_userdata_focus.js`
@@ -105,7 +118,7 @@ Current useful probes:
 - local player registration / title gates
 
 Notes:
-- `updatedUserData.updateMapCount` still stays `0` during these `GameStart` runs, but that is no longer the active blocker for the current reduced profile-only diff.
+- `updatedUserData.updateMapCount` still stays `0` during these `GameStart` runs, but that is no longer the active blocker for the current full trusted `GameStart` diff.
 - `dump.cs` remains the source of truth whenever checked-in source disagrees with runtime behavior.
 
 ## Reference Paths
@@ -131,9 +144,8 @@ Most relevant symbols / areas:
 - `Title.OnFinish`
 
 ## Immediate Next Step
-Move the `StartedMinimalDiff()` bisect forward from `profileOnly` to the next smallest starter bundle:
-- `characterCostumeOnly`
+Instrument the first post-title continuation after `Title.OnFinish`.
 
 Goal of that step:
-- keep the now-working `GameStart` diff apply path
-- determine whether adding `IUserCharacter` + `IUserCostume` moves the crash later or unlocks the first post-title flow
+- identify the first gameplay/outgame method that runs after `Title.OnFinish -> UniTaskCompletionSource`
+- determine whether the crash is in `Gameplay.OnRunApplicationAsync`, `Gameplay.OnTitleAsync`, `Gameplay.OnMainStoryAsync`, or the first continuation they schedule

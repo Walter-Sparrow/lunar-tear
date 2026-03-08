@@ -81,7 +81,7 @@ func (s *UserServiceServer) GameStart(ctx context.Context, _ *emptypb.Empty) (*p
 		}
 	}
 
-	diff := mock.StartedMinimalDiff(mock.DefaultUserID)
+	diff := mock.StartedGameStartDiff(mock.DefaultUserID)
 	setCommonResponseTrailers(ctx, diff, true)
 
 	return &pb.GameStartResponse{
