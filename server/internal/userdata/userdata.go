@@ -325,15 +325,15 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		starterCompanionUUID     = "starter-companion-0001"
 		starterDeckCharacterUUID = "starter-deck-character-0001"
 	)
-	userJSON, _ := encodeJSONRecords(&EntityIUser{
-		UserId:              userID,
-		PlayerId:            userID,
-		OsType:              2,
-		PlatformType:        2,
-		UserRestrictionType: 0,
-		RegisterDatetime:    nowMillis,
-		GameStartDatetime:   nowMillis,
-		LatestVersion:       0,
+	userJSON, _ := encodeJSONMaps(map[string]any{
+		"userId":              userID,
+		"playerId":            userID,
+		"osType":              2,
+		"platformType":        2,
+		"userRestrictionType": 0,
+		"registerDatetime":    nowMillis,
+		"gameStartDatetime":   nowMillis,
+		"latestVersion": 0,
 	})
 	userSettingJSON, _ := encodeJSONRecords(&EntityIUserSetting{
 		UserId:                userID,
@@ -553,11 +553,18 @@ func DefaultUserDataJSONClientTables(userID int64) map[string]string {
 func FirstEntranceUserDataJSONClientTables(userID int64) map[string]string {
 	tables := DefaultUserDataJSONClientTables(userID)
 	nowMillis := time.Now().UnixMilli()
-	// Intentionally keep IUser to the smallest plausible shape so we can get
-	// past the first append/parsing gate before restoring optional fields.
+	// Runtime ctor(Dictionary<string, object>) reads these keys as raw objects and
+	// immediately passes them to MPDateTime.ConvertMPDateTime(object), so they must
+	// stay plain unix-millis scalars here, not nested maps.
 	userJSON, _ := encodeJSONMaps(map[string]any{
-		"UserId":   userID,
-		"PlayerId": userID,
+		"userId":              userID,
+		"playerId":            userID,
+		"osType":              2,
+		"platformType":        2,
+		"userRestrictionType": 0,
+		"registerDatetime":    nowMillis,
+		"gameStartDatetime":   nowMillis,
+		"latestVersion": 0,
 	})
 	userStatusJSON, _ := encodeJSONRecords(&EntityIUserStatus{
 		UserId:                userID,

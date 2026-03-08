@@ -14,8 +14,8 @@ import (
 	"sync"
 )
 
-const termsOfServiceHTML = `<html><head><title>Terms of Service</title></head><body>###1###</body></html>`
-const privacyPolicyHTML = `<html><head><title>Privacy Policy</title></head><body>###2###</body></html>`
+const termsVersionMarker = "###123###"
+const privacyVersionMarker = "###123###"
 
 // resourcesURLOriginal is the base URL embedded in list.bin; must be replaced with same-length (43 bytes) when rewriting.
 const resourcesURLOriginal = "https://resources.app.nierreincarnation.com"
@@ -25,6 +25,21 @@ type OctoHTTPServer struct {
 	ResourcesBaseURL string // if non-empty and exactly 43 chars, list.bin is rewritten to use this base for asset URLs
 	revisions        *revisionTracker
 	resolver         *assetResolver
+}
+
+func staticPageLanguage(path string) string {
+	parts := strings.Split(path, "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] == "static" && parts[i+1] != "" {
+			return parts[i+1]
+		}
+	}
+	return "unknown"
+}
+
+func renderStaticTermsPage(title, language, version string) string {
+	return "<html><head><title>" + title + "</title></head><body><h1>" + title +
+		"</h1><p>Language: " + language + "</p><p>Version: " + version + "</p></body></html>"
 }
 
 // countResponseWriter wraps http.ResponseWriter and counts bytes written.
@@ -378,17 +393,19 @@ func (s *OctoHTTPServer) handleWebAPI(w http.ResponseWriter, r *http.Request, pa
 	}
 
 	if strings.Contains(path, "termsofuse") {
+		language := staticPageLanguage(path)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(200)
-		w.Write([]byte(termsOfServiceHTML))
+		w.Write([]byte(renderStaticTermsPage("Terms of Service", language, termsVersionMarker)))
 		return
 	}
 
 	if strings.Contains(path, "privacy") {
+		language := staticPageLanguage(path)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(200)
-		w.Write([]byte(privacyPolicyHTML))
+		w.Write([]byte(renderStaticTermsPage("Privacy Policy", language, privacyVersionMarker)))
 		return
 	}
 
