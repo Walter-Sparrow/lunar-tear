@@ -16,6 +16,8 @@ let lastUserDataPostCallback = null;
 let lastUserDataPostMethod = null;
 let userDataRequestSeq = 0;
 let activeUserDataRequestId = 0;
+let userDataCallbackCtorSeq = 0;
+let userDataCallbackMethodsSeen = [];
 
 function awaitLibil2cpp(callback) {
   if (globalThis._masterDataTextHooksInstalled) return;
@@ -360,12 +362,42 @@ function readDelegateTarget(obj) {
   }
 }
 
+function pointerLocationSummary(addr) {
+  try {
+    if (!addr || addr.isNull()) return '<null>';
+    const mod = Process.findModuleByAddress(addr);
+    if (!mod) return `${addr} <no-module>`;
+    if (mod.name === 'libil2cpp.so') {
+      return `${addr} ${mod.name}+${moduleOffsetHex(addr)}`;
+    }
+    return `${addr} ${mod.name}`;
+  } catch (error) {
+    return `${addr} <loc-err>`;
+  }
+}
+
+function dumpInstructionWindow(label, centerOffset, beforeCount, afterCount) {
+  console.log(`[UserDB] ${label} disassembly around 0x${centerOffset.toString(16)}`);
+  for (let i = -beforeCount; i <= afterCount; i += 1) {
+    const offset = centerOffset + i * 4;
+    try {
+      const addr = libil2cpp.add(offset);
+      const insn = Instruction.parse(addr);
+      const marker = i === 0 ? '>>' : '  ';
+      console.log(`[UserDB] ${marker} 0x${offset.toString(16)}: ${insn.mnemonic} ${insn.opStr}`);
+    } catch (error) {
+      console.log(`[UserDB] !! 0x${offset.toString(16)}: <decode-error ${error}>`);
+    }
+  }
+}
+
 function logDivider(label) {
   console.log(`\n==== ${label} ====`);
 }
 
 awaitLibil2cpp(() => {
   logDivider('Master DB Hooks');
+  dumpInstructionWindow('UserData post callsite', 0x361bd3c, 10, 6);
 
   // Master data RPC / response / downloader flow.
   hook('DataServiceClient.GetLatestMasterDataVersionAsync', 0x3a43788, {
@@ -508,6 +540,8 @@ awaitLibil2cpp(() => {
       activeUserDataRequestId = userDataRequestSeq;
       lastUserDataPostCallback = null;
       lastUserDataPostMethod = null;
+      userDataCallbackCtorSeq = 0;
+      userDataCallbackMethodsSeen = [];
       console.log(`[UserDB] RequestAsync req=${activeUserDataRequestId} self=${pointerSummary(args[0])}`);
     },
     onLeave(retval) {
@@ -582,6 +616,7 @@ awaitLibil2cpp(() => {
       if (!isLikelyUserDataGetFlowCaller(this.returnAddress)) return;
       const callback = args[1];
       const state = args[2];
+      const target = callback && !callback.isNull() ? readDelegateTarget(callback) : ptr(0);
       lastUserDataPostCallback = callback;
       lastUserDataPostMethod = callback && !callback.isNull() ? readObjectPointer(callback, 0x18) : ptr(0);
       console.log(
@@ -589,6 +624,28 @@ awaitLibil2cpp(() => {
       );
       if (callback && !callback.isNull()) {
         console.log(`[UserDB] UnitySynchronizationContext2.Post callbackLayout ${readDelegateLayoutSummary(callback)}`);
+      }
+      if (safeKlassName(target) === 'UserDataGet') {
+        console.log(
+          `[UserDB] UnitySynchronizationContext2.Post targetFields onSuccess=${pointerSummary(readObjectPointer(target, 0x0))} onError=${pointerSummary(readObjectPointer(target, 0x8))} fetchTable=${pointerSummary(readObjectPointer(target, 0x10))} fetchRecord=${pointerSummary(readObjectPointer(target, 0x18))}`,
+        );
+      }
+    },
+  });
+
+  hook('UserDataGet main-thread post callsite', 0x361bd3c, {
+    onEnter() {
+      const syncContext = this.context.x0;
+      const callback = this.context.x1;
+      const state = this.context.x2;
+      console.log(
+        `[UserDB] Post callsite req=${activeUserDataRequestId} syncContext=${pointerSummary(syncContext)} callback=${pointerSummary(callback)} state=${pointerSummary(state)}`,
+      );
+      if (callback && !callback.isNull()) {
+        const method = readObjectPointer(callback, 0x18);
+        console.log(
+          `[UserDB] Post callsite callbackLayout ${readDelegateLayoutSummary(callback)} methodLoc=${pointerLocationSummary(method)}`,
+        );
       }
     },
   });
@@ -599,10 +656,15 @@ awaitLibil2cpp(() => {
       const target = args[1];
       const method = args[2];
       if (safeKlassName(target) !== 'UserDataGet') return;
+      userDataCallbackCtorSeq += 1;
       lastUserDataPostCallback = self;
       lastUserDataPostMethod = method;
+      userDataCallbackMethodsSeen.push(method.toString());
       console.log(
-        `[UserDB] SendOrPostCallback.ctor req=${activeUserDataRequestId} self=${pointerSummary(self)} target=${pointerSummary(target)} method=${method}`,
+        `[UserDB] SendOrPostCallback.ctor req=${activeUserDataRequestId} seq=${userDataCallbackCtorSeq} self=${pointerSummary(self)} target=${pointerSummary(target)} method=${method} methodLoc=${pointerLocationSummary(method)}`,
+      );
+      console.log(
+        `[UserDB] SendOrPostCallback.ctor targetFields onSuccess=${pointerSummary(readObjectPointer(target, 0x0))} onError=${pointerSummary(readObjectPointer(target, 0x8))} fetchTable=${pointerSummary(readObjectPointer(target, 0x10))} fetchRecord=${pointerSummary(readObjectPointer(target, 0x18))}`,
       );
     },
   });
@@ -620,6 +682,34 @@ awaitLibil2cpp(() => {
     },
   });
 
+  hook('FetchTargetTableMethod.Invoke', 0x35c761c, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(`[UserDB] FetchTargetTableMethod.Invoke self=${pointerSummary(args[0])}`);
+      console.log(`[UserDB] FetchTargetTableMethod.Invoke layout ${readDelegateLayoutSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      console.log(
+        `[UserDB] FetchTargetTableMethod.Invoke -> ${pointerSummary(retval)} self=${pointerSummary(this.self)}`,
+      );
+    },
+  });
+
+  hook('FetchRecordMethod.Invoke', 0x35c7240, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(
+        `[UserDB] FetchRecordMethod.Invoke self=${pointerSummary(args[0])} tableName=${readManagedString(args[1])}`,
+      );
+      console.log(`[UserDB] FetchRecordMethod.Invoke layout ${readDelegateLayoutSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      console.log(
+        `[UserDB] FetchRecordMethod.Invoke -> ${pointerSummary(retval)} self=${pointerSummary(this.self)}`,
+      );
+    },
+  });
+
   hook('CalculatorNetworking.GetUserDataGetDataSource', 0x2e1bd4c, {
     onEnter(args) {
       console.log(
@@ -631,6 +721,11 @@ awaitLibil2cpp(() => {
     },
     onLeave(retval) {
       console.log(`[UserDB] GetUserDataGetDataSource -> ${pointerSummary(retval)}`);
+      if (retval && !retval.isNull()) {
+        console.log(
+          `[UserDB] GetUserDataGetDataSource targetFields onSuccess=${pointerSummary(readObjectPointer(retval, 0x0))} onError=${pointerSummary(readObjectPointer(retval, 0x8))} fetchTable=${pointerSummary(readObjectPointer(retval, 0x10))} fetchRecord=${pointerSummary(readObjectPointer(retval, 0x18))}`,
+        );
+      }
     },
   });
 
@@ -644,32 +739,84 @@ awaitLibil2cpp(() => {
 
   hook('UserDataGet.add_OnSuccess', 0x361aa10, {
     onEnter(args) {
+      this.self = args[0];
       console.log(
         `[UserDB] add_OnSuccess self=${pointerSummary(args[0])} value=${pointerSummary(args[1])}`,
+      );
+    },
+    onLeave() {
+      console.log(
+        `[UserDB] add_OnSuccess fields onSuccess=${pointerSummary(readObjectPointer(this.self, 0x0))} onError=${pointerSummary(readObjectPointer(this.self, 0x8))}`,
+      );
+    },
+  });
+
+  hook('UserDataGet.remove_OnSuccess', 0x361aab4, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(
+        `[UserDB] remove_OnSuccess self=${pointerSummary(args[0])} value=${pointerSummary(args[1])}`,
+      );
+    },
+    onLeave() {
+      console.log(
+        `[UserDB] remove_OnSuccess fields onSuccess=${pointerSummary(readObjectPointer(this.self, 0x0))} onError=${pointerSummary(readObjectPointer(this.self, 0x8))}`,
       );
     },
   });
 
   hook('UserDataGet.add_OnError', 0x361ab58, {
     onEnter(args) {
+      this.self = args[0];
       console.log(
         `[UserDB] add_OnError self=${pointerSummary(args[0])} value=${pointerSummary(args[1])}`,
+      );
+    },
+    onLeave() {
+      console.log(
+        `[UserDB] add_OnError fields onSuccess=${pointerSummary(readObjectPointer(this.self, 0x0))} onError=${pointerSummary(readObjectPointer(this.self, 0x8))}`,
+      );
+    },
+  });
+
+  hook('UserDataGet.remove_OnError', 0x361abfc, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(
+        `[UserDB] remove_OnError self=${pointerSummary(args[0])} value=${pointerSummary(args[1])}`,
+      );
+    },
+    onLeave() {
+      console.log(
+        `[UserDB] remove_OnError fields onSuccess=${pointerSummary(readObjectPointer(this.self, 0x0))} onError=${pointerSummary(readObjectPointer(this.self, 0x8))}`,
       );
     },
   });
 
   hook('UserDataGet.Initialize', 0x361aca0, {
     onEnter(args) {
+      this.self = args[0];
       console.log(
         `[UserDB] Initialize self=${pointerSummary(args[0])} fetchTableHandler=${pointerSummary(args[1])} fetchRecordHandler=${pointerSummary(args[2])}`,
+      );
+    },
+    onLeave() {
+      console.log(
+        `[UserDB] Initialize fields onSuccess=${pointerSummary(readObjectPointer(this.self, 0x0))} onError=${pointerSummary(readObjectPointer(this.self, 0x8))} fetchTable=${pointerSummary(readObjectPointer(this.self, 0x10))} fetchRecord=${pointerSummary(readObjectPointer(this.self, 0x18))}`,
       );
     },
   });
 
   hook('UserDataGet.InitializeHandler', 0x361aca8, {
     onEnter(args) {
+      this.self = args[0];
       console.log(
         `[UserDB] InitializeHandler self=${pointerSummary(args[0])} fetchTableHandler=${pointerSummary(args[1])} fetchRecordHandler=${pointerSummary(args[2])}`,
+      );
+    },
+    onLeave() {
+      console.log(
+        `[UserDB] InitializeHandler fields onSuccess=${pointerSummary(readObjectPointer(this.self, 0x0))} onError=${pointerSummary(readObjectPointer(this.self, 0x8))} fetchTable=${pointerSummary(readObjectPointer(this.self, 0x10))} fetchRecord=${pointerSummary(readObjectPointer(this.self, 0x18))}`,
       );
     },
   });
@@ -680,10 +827,12 @@ awaitLibil2cpp(() => {
       console.log(`[UserDB] InitializeDefault self=${pointerSummary(args[0])}`);
     },
     onLeave() {
-      const fetchTableHandler = readObjectPointer(this.self, 0x20);
-      const fetchRecordHandler = readObjectPointer(this.self, 0x28);
+      const onSuccess = readObjectPointer(this.self, 0x0);
+      const onError = readObjectPointer(this.self, 0x8);
+      const fetchTableHandler = readObjectPointer(this.self, 0x10);
+      const fetchRecordHandler = readObjectPointer(this.self, 0x18);
       console.log(
-        `[UserDB] InitializeDefault completed self=${pointerSummary(this.self)} fetchTableHandler=${pointerSummary(fetchTableHandler)} fetchRecordHandler=${pointerSummary(fetchRecordHandler)}`,
+        `[UserDB] InitializeDefault completed self=${pointerSummary(this.self)} onSuccess=${pointerSummary(onSuccess)} onError=${pointerSummary(onError)} fetchTableHandler=${pointerSummary(fetchTableHandler)} fetchRecordHandler=${pointerSummary(fetchRecordHandler)}`,
       );
       if (fetchTableHandler && !fetchTableHandler.isNull()) {
         console.log(`[UserDB] InitializeDefault fetchTableLayout ${readDelegateLayoutSummary(fetchTableHandler)}`);
@@ -696,18 +845,51 @@ awaitLibil2cpp(() => {
 
   hook('UserDataGet.<RequestAsync>b__0', 0x361b5b0, {
     onEnter(args) {
-      console.log(`[UserDB] <RequestAsync>b__0 self=${pointerSummary(args[0])}`);
+      console.log(
+        `[UserDB] <RequestAsync>b__0 req=${activeUserDataRequestId} self=${pointerSummary(args[0])} lastPostedCallback=${pointerSummary(lastUserDataPostCallback)} lastPostedMethod=${lastUserDataPostMethod}`,
+      );
+      if (lastUserDataPostMethod && !lastUserDataPostMethod.isNull()) {
+        console.log(`[UserDB] <RequestAsync>b__0 lastPostedMethodLoc=${pointerLocationSummary(lastUserDataPostMethod)}`);
+      }
     },
     onLeave(retval) {
       console.log(`[UserDB] <RequestAsync>b__0 -> ${pointerSummary(retval)}`);
     },
   });
 
+  hook('Task.Run<TResult>(UserData worker)', 0x38ae49c, {
+    onEnter(args) {
+      const functionObj = args[0];
+      const cancellationTokenPtr = args[1];
+      const target = functionObj && !functionObj.isNull() ? readDelegateTarget(functionObj) : ptr(0);
+      const method = functionObj && !functionObj.isNull() ? readObjectPointer(functionObj, 0x18) : ptr(0);
+      const targetName = safeKlassName(target);
+      if (targetName !== 'UserDataGet') return;
+      this.shouldLog = true;
+      console.log(
+        `[UserDB] Task.Run<TResult> req=${activeUserDataRequestId} function=${pointerSummary(functionObj)} target=${pointerSummary(target)} cancellationTokenPtr=${pointerSummary(cancellationTokenPtr)}`,
+      );
+      console.log(
+        `[UserDB] Task.Run<TResult> layout ${readDelegateLayoutSummary(functionObj)} methodLoc=${pointerLocationSummary(method)}`,
+      );
+      console.log(
+        `[UserDB] Task.Run<TResult> targetFields onSuccess=${pointerSummary(readObjectPointer(target, 0x0))} onError=${pointerSummary(readObjectPointer(target, 0x8))} fetchTable=${pointerSummary(readObjectPointer(target, 0x10))} fetchRecord=${pointerSummary(readObjectPointer(target, 0x18))}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[UserDB] Task.Run<TResult> -> ${pointerSummary(retval)}`);
+    },
+  });
+
   hook('UserDataGet.<RequestAsync>b__11_1', 0x361ae60, {
     onEnter(args) {
       console.log(
-        `[UserDB] <RequestAsync>b__11_1 req=${activeUserDataRequestId} self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])} lastPostedCallback=${pointerSummary(lastUserDataPostCallback)} lastPostedMethod=${lastUserDataPostMethod}`,
+        `[UserDB] <RequestAsync>b__11_1 req=${activeUserDataRequestId} self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])} lastPostedCallback=${pointerSummary(lastUserDataPostCallback)} lastPostedMethod=${lastUserDataPostMethod} callbackCtorSeq=${userDataCallbackCtorSeq} callbackMethodsSeen=${userDataCallbackMethodsSeen.join(',')}`,
       );
+      if (lastUserDataPostMethod && !lastUserDataPostMethod.isNull()) {
+        console.log(`[UserDB] <RequestAsync>b__11_1 lastPostedMethodLoc=${pointerLocationSummary(lastUserDataPostMethod)}`);
+      }
     },
     onLeave() {
       console.log('[UserDB] <RequestAsync>b__11_1 completed');
@@ -717,8 +899,11 @@ awaitLibil2cpp(() => {
   hook('UserDataGet.<RequestAsync>b__11_3', 0x361b318, {
     onEnter(args) {
       console.log(
-        `[UserDB] <RequestAsync>b__11_3 req=${activeUserDataRequestId} self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])} lastPostedCallback=${pointerSummary(lastUserDataPostCallback)} lastPostedMethod=${lastUserDataPostMethod}`,
+        `[UserDB] <RequestAsync>b__11_3 req=${activeUserDataRequestId} self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])} lastPostedCallback=${pointerSummary(lastUserDataPostCallback)} lastPostedMethod=${lastUserDataPostMethod} callbackCtorSeq=${userDataCallbackCtorSeq} callbackMethodsSeen=${userDataCallbackMethodsSeen.join(',')}`,
       );
+      if (lastUserDataPostMethod && !lastUserDataPostMethod.isNull()) {
+        console.log(`[UserDB] <RequestAsync>b__11_3 lastPostedMethodLoc=${pointerLocationSummary(lastUserDataPostMethod)}`);
+      }
     },
     onLeave() {
       console.log('[UserDB] <RequestAsync>b__11_3 completed');
@@ -732,10 +917,34 @@ awaitLibil2cpp(() => {
     },
   });
 
+  hook('UserDataGet.HandleError.ctor', 0x361be18, {
+    onEnter(args) {
+      const self = args[0];
+      const target = args[1];
+      const method = args[2];
+      if (safeKlassName(target) !== '<>c__DisplayClass7_0' && safeKlassName(target) !== 'UserDataGet') return;
+      console.log(
+        `[UserDB] HandleError.ctor req=${activeUserDataRequestId} self=${pointerSummary(self)} target=${pointerSummary(target)} method=${method} methodLoc=${pointerLocationSummary(method)}`,
+      );
+    },
+  });
+
   hook('UserDataGet.HandleSuccess.Invoke', 0x361af84, {
     onEnter(args) {
       console.log(
         `[UserDB] HandleSuccess.Invoke self=${pointerSummary(args[0])} updatedTableNames=${pointerSummary(args[1])}`,
+      );
+    },
+  });
+
+  hook('UserDataGet.HandleSuccess.ctor', 0x361be60, {
+    onEnter(args) {
+      const self = args[0];
+      const target = args[1];
+      const method = args[2];
+      if (safeKlassName(target) !== 'UserDataGet' && safeKlassName(target) !== '<>c__DisplayClass7_0') return;
+      console.log(
+        `[UserDB] HandleSuccess.ctor req=${activeUserDataRequestId} self=${pointerSummary(self)} target=${pointerSummary(target)} method=${method} methodLoc=${pointerLocationSummary(method)}`,
       );
     },
   });
@@ -898,8 +1107,9 @@ awaitLibil2cpp(() => {
       const displayClass = readRawPointer(args[0], 0x28);
       const context = readRawPointer(args[0], 0x30);
       const databaseBuilder = readRawPointer(args[0], 0x38);
+      const bin = displayClass.isNull() ? ptr(0) : readObjectPointer(displayClass, 0x0);
       console.log(
-        `[UserDB] <RequestAsync>d__11.MoveNext self=${pointerSummary(args[0])} state=${state} this=${pointerSummary(selfObj)} displayClass=${pointerSummary(displayClass)} context=${pointerSummary(context)} databaseBuilder=${pointerSummary(databaseBuilder)}`,
+        `[UserDB] <RequestAsync>d__11.MoveNext self=${pointerSummary(args[0])} state=${state} this=${pointerSummary(selfObj)} displayClass=${pointerSummary(displayClass)} context=${pointerSummary(context)} databaseBuilder=${pointerSummary(databaseBuilder)} bin=${pointerSummary(bin)} binLen=${readByteArrayLength(bin)}`,
       );
     },
     onLeave() {
@@ -908,8 +1118,9 @@ awaitLibil2cpp(() => {
       const displayClass = readRawPointer(this.self, 0x28);
       const context = readRawPointer(this.self, 0x30);
       const databaseBuilder = readRawPointer(this.self, 0x38);
+      const bin = displayClass.isNull() ? ptr(0) : readObjectPointer(displayClass, 0x0);
       console.log(
-        `[UserDB] <RequestAsync>d__11.MoveNext completed self=${pointerSummary(this.self)} state=${state} this=${pointerSummary(selfObj)} displayClass=${pointerSummary(displayClass)} context=${pointerSummary(context)} databaseBuilder=${pointerSummary(databaseBuilder)}`,
+        `[UserDB] <RequestAsync>d__11.MoveNext completed self=${pointerSummary(this.self)} state=${state} this=${pointerSummary(selfObj)} displayClass=${pointerSummary(displayClass)} context=${pointerSummary(context)} databaseBuilder=${pointerSummary(databaseBuilder)} bin=${pointerSummary(bin)} binLen=${readByteArrayLength(bin)}`,
       );
     },
   });

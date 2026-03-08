@@ -24,8 +24,8 @@ type EntityIUser struct {
 	OsType              int32    // Key(2) — 2 = Android
 	PlatformType        int32    // Key(3) — 2 = GooglePlay
 	UserRestrictionType int32    // Key(4) — 0 = None
-	RegisterDatetime    int64    // Key(5) — unix timestamp (seconds)
-	GameStartDatetime   int64    // Key(6) — 0 = not started
+	RegisterDatetime    int64    // Key(5) — unix millis
+	GameStartDatetime   int64    // Key(6) — unix millis
 	LatestVersion       int64    // Key(7)
 }
 
@@ -300,8 +300,7 @@ func DefaultUserData(userID int64) map[string]string {
 // DefaultUserDataJSON returns user data as plain JSON.
 // Verified: client accepts JSON format and parses it correctly.
 func DefaultUserDataJSON(userID int64) map[string]string {
-	now := time.Now().Unix()
-	acquiredAtMillis := now * 1000
+	nowMillis := time.Now().UnixMilli()
 	const (
 		starterCharacterID = int32(1)
 		starterCostumeID   = int32(1)
@@ -324,8 +323,8 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		OsType:              2,
 		PlatformType:        2,
 		UserRestrictionType: 0,
-		RegisterDatetime:    now,
-		GameStartDatetime:   0,
+		RegisterDatetime:    nowMillis,
+		GameStartDatetime:   nowMillis,
 		LatestVersion:       0,
 	})
 	userSettingJSON, _ := encodeJSONRecords(&EntityIUserSetting{
@@ -364,7 +363,7 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		Level:                 1,
 		Exp:                   0,
 		StaminaMilliValue:     60000,
-		StaminaUpdateDatetime: now,
+		StaminaUpdateDatetime: nowMillis,
 		LatestVersion:         0,
 	})
 	userGemJSON, _ := encodeJSONRecords(&EntityIUserGem{
@@ -375,11 +374,11 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 	userProfileJSON, _ := encodeJSONRecords(&EntityIUserProfile{
 		UserId:                          userID,
 		Name:                            "Lunar Tear",
-		NameUpdateDatetime:              now,
+		NameUpdateDatetime:              nowMillis,
 		Message:                         "",
-		MessageUpdateDatetime:           now,
+		MessageUpdateDatetime:           nowMillis,
 		FavoriteCostumeId:               starterCostumeID,
-		FavoriteCostumeIdUpdateDatetime: now,
+		FavoriteCostumeIdUpdateDatetime: nowMillis,
 		LatestVersion:                   0,
 	})
 	userCharacterJSON, _ := encodeJSONRecords(&EntityIUserCharacter{
@@ -397,7 +396,7 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		Level:               1,
 		Exp:                 0,
 		HeadupDisplayViewId: 0,
-		AcquisitionDatetime: acquiredAtMillis,
+		AcquisitionDatetime: nowMillis,
 		AwakenCount:         0,
 		LatestVersion:       0,
 	})
@@ -409,7 +408,7 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		Exp:                 0,
 		LimitBreakCount:     0,
 		IsProtected:         false,
-		AcquisitionDatetime: acquiredAtMillis,
+		AcquisitionDatetime: nowMillis,
 		LatestVersion:       0,
 	})
 	userCompanionJSON, _ := encodeJSONRecords(&EntityIUserCompanion{
@@ -418,7 +417,7 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		CompanionId:         starterCompanionID,
 		HeadupDisplayViewId: 0,
 		Level:               1,
-		AcquisitionDatetime: acquiredAtMillis,
+		AcquisitionDatetime: nowMillis,
 		LatestVersion:       0,
 	})
 	userDeckCharacterJSON, _ := encodeJSONRecords(&EntityIUserDeckCharacter{
@@ -447,7 +446,7 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		TotalLoginCount:           1,
 		ContinualLoginCount:       1,
 		MaxContinualLoginCount:    1,
-		LastLoginDatetime:         now,
+		LastLoginDatetime:         nowMillis,
 		LastComebackLoginDatetime: 0,
 		LatestVersion:             0,
 	})
@@ -471,7 +470,7 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		QuestId:             starterQuestID,
 		QuestStateType:      0,
 		IsBattleOnly:        false,
-		LatestStartDatetime: acquiredAtMillis,
+		LatestStartDatetime: nowMillis,
 		ClearCount:          0,
 		DailyClearCount:     0,
 		LastClearDatetime:   0,
@@ -481,7 +480,7 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 	userMissionJSON, _ := encodeJSONRecords(&EntityIUserMission{
 		UserId:                    userID,
 		MissionId:                 starterMissionID,
-		StartDatetime:             now,
+		StartDatetime:             nowMillis,
 		ProgressValue:             0,
 		MissionProgressStatusType: missionInProgress,
 		ClearDatetime:             0,
