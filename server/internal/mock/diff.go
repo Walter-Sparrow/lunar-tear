@@ -32,3 +32,33 @@ func StartedDiff(userID int64) map[string]*pb.DiffData {
 	}
 	return out
 }
+
+// StartedMinimalDiff returns only the starter rows needed to get past title
+// completion into the first outgame flow, while keeping risky account/core rows
+// such as IUser out of the post-GameStart diff.
+func StartedMinimalDiff(userID int64) map[string]*pb.DiffData {
+	tables := userdata.DefaultUserDataJSONClientTables(userID)
+	selected := []string{
+		"IUserProfile",
+		"IUserCharacter",
+		"IUserCostume",
+		"IUserWeapon",
+		"IUserCompanion",
+		"IUserDeckCharacter",
+		"IUserDeck",
+		"IUserMission",
+		"IUserMainQuestFlowStatus",
+		"IUserMainQuestMainFlowStatus",
+		"IUserMainQuestProgressStatus",
+		"IUserMainQuestSeasonRoute",
+		"IUserQuest",
+		"IUserTutorialProgress",
+	}
+	out := make(map[string]*pb.DiffData, len(selected))
+	for _, table := range selected {
+		if jsonStr, ok := tables[table]; ok {
+			out[table] = &pb.DiffData{UpdateRecordsJson: jsonStr}
+		}
+	}
+	return out
+}

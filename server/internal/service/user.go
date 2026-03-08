@@ -58,10 +58,9 @@ func (s *UserServiceServer) GameStart(ctx context.Context, _ *emptypb.Empty) (*p
 	}
 
 	return &pb.GameStartResponse{
-		// Temporarily keep GameStart diff empty to isolate post-name crashes from
-		// the started-account baseline payload. Register/Auth/GetUserData already
-		// seed the state we need to reach this point.
-		DiffUserData: mock.EmptyDiff(),
+		// Apply only the starter outgame rows we need after title completion.
+		// Keep IUser and other risky core-account rows out of GameStart diff.
+		DiffUserData: mock.StartedMinimalDiff(mock.DefaultUserID),
 	}, nil
 }
 
