@@ -12,6 +12,10 @@
 //   frida -Uf com.square_enix.android_googleplay.nierspww -l frida/hooks_masterdata_text_pipeline.js
 
 let libil2cpp;
+let lastUserDataPostCallback = null;
+let lastUserDataPostMethod = null;
+let userDataRequestSeq = 0;
+let activeUserDataRequestId = 0;
 
 function awaitLibil2cpp(callback) {
   if (globalThis._masterDataTextHooksInstalled) return;
@@ -347,6 +351,15 @@ function readDelegateLayoutSummary(obj) {
   ].join(' ');
 }
 
+function readDelegateTarget(obj) {
+  try {
+    if (!obj || obj.isNull()) return ptr(0);
+    return obj.add(0x10 + 0x10).readPointer();
+  } catch (error) {
+    return ptr(0);
+  }
+}
+
 function logDivider(label) {
   console.log(`\n==== ${label} ====`);
 }
@@ -491,10 +504,14 @@ awaitLibil2cpp(() => {
   // User data hand-off after master data succeeds.
   hook('UserDataGet.RequestAsync', 0x361ad5c, {
     onEnter(args) {
-      console.log(`[UserDB] RequestAsync self=${pointerSummary(args[0])}`);
+      userDataRequestSeq += 1;
+      activeUserDataRequestId = userDataRequestSeq;
+      lastUserDataPostCallback = null;
+      lastUserDataPostMethod = null;
+      console.log(`[UserDB] RequestAsync req=${activeUserDataRequestId} self=${pointerSummary(args[0])}`);
     },
     onLeave(retval) {
-      console.log(`[UserDB] RequestAsync -> ${pointerSummary(retval)}`);
+      console.log(`[UserDB] RequestAsync req=${activeUserDataRequestId} -> ${pointerSummary(retval)}`);
     },
   });
 
@@ -565,12 +582,41 @@ awaitLibil2cpp(() => {
       if (!isLikelyUserDataGetFlowCaller(this.returnAddress)) return;
       const callback = args[1];
       const state = args[2];
+      lastUserDataPostCallback = callback;
+      lastUserDataPostMethod = callback && !callback.isNull() ? readObjectPointer(callback, 0x18) : ptr(0);
       console.log(
-        `[UserDB] UnitySynchronizationContext2.Post caller=${moduleOffsetHex(this.returnAddress)} callback=${pointerSummary(callback)} state=${pointerSummary(state)}`,
+        `[UserDB] UnitySynchronizationContext2.Post req=${activeUserDataRequestId} caller=${moduleOffsetHex(this.returnAddress)} callback=${pointerSummary(callback)} state=${pointerSummary(state)}`,
       );
       if (callback && !callback.isNull()) {
         console.log(`[UserDB] UnitySynchronizationContext2.Post callbackLayout ${readDelegateLayoutSummary(callback)}`);
       }
+    },
+  });
+
+  hook('SendOrPostCallback.ctor(UserData target)', 0x43ed524, {
+    onEnter(args) {
+      const self = args[0];
+      const target = args[1];
+      const method = args[2];
+      if (safeKlassName(target) !== 'UserDataGet') return;
+      lastUserDataPostCallback = self;
+      lastUserDataPostMethod = method;
+      console.log(
+        `[UserDB] SendOrPostCallback.ctor req=${activeUserDataRequestId} self=${pointerSummary(self)} target=${pointerSummary(target)} method=${method}`,
+      );
+    },
+  });
+
+  hook('SendOrPostCallback.Invoke(UserData target)', 0x43e9ae0, {
+    onEnter(args) {
+      const self = args[0];
+      const state = args[1];
+      const target = readDelegateTarget(self);
+      if (safeKlassName(target) !== 'UserDataGet') return;
+      console.log(
+        `[UserDB] SendOrPostCallback.Invoke req=${activeUserDataRequestId} self=${pointerSummary(self)} target=${pointerSummary(target)} state=${pointerSummary(state)}`,
+      );
+      console.log(`[UserDB] SendOrPostCallback.Invoke layout ${readDelegateLayoutSummary(self)}`);
     },
   });
 
@@ -660,7 +706,7 @@ awaitLibil2cpp(() => {
   hook('UserDataGet.<RequestAsync>b__11_1', 0x361ae60, {
     onEnter(args) {
       console.log(
-        `[UserDB] <RequestAsync>b__11_1 self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])}`,
+        `[UserDB] <RequestAsync>b__11_1 req=${activeUserDataRequestId} self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])} lastPostedCallback=${pointerSummary(lastUserDataPostCallback)} lastPostedMethod=${lastUserDataPostMethod}`,
       );
     },
     onLeave() {
@@ -671,7 +717,7 @@ awaitLibil2cpp(() => {
   hook('UserDataGet.<RequestAsync>b__11_3', 0x361b318, {
     onEnter(args) {
       console.log(
-        `[UserDB] <RequestAsync>b__11_3 self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])}`,
+        `[UserDB] <RequestAsync>b__11_3 req=${activeUserDataRequestId} self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])} lastPostedCallback=${pointerSummary(lastUserDataPostCallback)} lastPostedMethod=${lastUserDataPostMethod}`,
       );
     },
     onLeave() {
