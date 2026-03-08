@@ -272,6 +272,14 @@ func encodeJSONRecords(entities ...any) (string, error) {
 	return string(jsonBytes), nil
 }
 
+func encodeJSONMaps(records ...map[string]any) (string, error) {
+	jsonBytes, err := json.Marshal(records)
+	if err != nil {
+		return "", fmt.Errorf("json marshal maps: %w", err)
+	}
+	return string(jsonBytes), nil
+}
+
 // DefaultUserData returns pre-built user data tables for a fresh user.
 // We provide BOTH msgpack-encoded (base64) and plain JSON variants.
 // The server tries msgpack first; if the client doesn't accept it, switch to JSON.
@@ -545,15 +553,11 @@ func DefaultUserDataJSONClientTables(userID int64) map[string]string {
 func FirstEntranceUserDataJSONClientTables(userID int64) map[string]string {
 	tables := DefaultUserDataJSONClientTables(userID)
 	nowMillis := time.Now().UnixMilli()
-	userJSON, _ := encodeJSONRecords(&EntityIUser{
-		UserId:              userID,
-		PlayerId:            userID,
-		OsType:              2,
-		PlatformType:        2,
-		UserRestrictionType: 0,
-		RegisterDatetime:    nowMillis,
-		GameStartDatetime:   nowMillis,
-		LatestVersion:       0,
+	// Intentionally keep IUser to the smallest plausible shape so we can get
+	// past the first append/parsing gate before restoring optional fields.
+	userJSON, _ := encodeJSONMaps(map[string]any{
+		"UserId":   userID,
+		"PlayerId": userID,
 	})
 	userStatusJSON, _ := encodeJSONRecords(&EntityIUserStatus{
 		UserId:                userID,

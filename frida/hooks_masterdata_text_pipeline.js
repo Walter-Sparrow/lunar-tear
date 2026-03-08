@@ -20,6 +20,7 @@ let userDataCallbackCtorSeq = 0;
 let userDataCallbackMethodsSeen = [];
 let isInitializingTitleMenuButton = false;
 let userDataAsmDumpedAtRuntime = false;
+const MINIMAL_USERDATA_LOGS = true;
 
 function awaitLibil2cpp(callback) {
   if (globalThis._masterDataTextHooksInstalled) return;
@@ -301,6 +302,25 @@ function moduleOffsetHex(addr) {
   }
 }
 
+function pointerOffsetHex(addr) {
+  try {
+    if (!addr || addr.isNull() || !libil2cpp) return '<null>';
+    return `0x${addr.sub(libil2cpp).toString(16)}`;
+  } catch (error) {
+    return '<err>';
+  }
+}
+
+function isOffsetInRange(addr, startOffset, endOffsetExclusive) {
+  try {
+    if (!addr || addr.isNull() || !libil2cpp) return false;
+    const offset = addr.sub(libil2cpp).toUInt32();
+    return offset >= startOffset && offset < endOffsetExclusive;
+  } catch (error) {
+    return false;
+  }
+}
+
 function isLikelyUserDataGetFlowCaller(addr) {
   try {
     if (!addr || addr.isNull() || !libil2cpp) return false;
@@ -378,6 +398,62 @@ function pointerLocationSummary(addr) {
   }
 }
 
+function readObjectInt64(obj, fieldOffset) {
+  try {
+    if (!obj || obj.isNull()) return null;
+    return obj.add(0x10 + fieldOffset).readS64().toString();
+  } catch (error) {
+    return null;
+  }
+}
+
+function readManagedScalarSummary(obj) {
+  try {
+    if (!obj || obj.isNull()) return '<null>';
+    const klass = safeKlassName(obj);
+    if (klass === 'String') return `"${readManagedString(obj)}"`;
+    if (klass === 'Int32') return `${obj.add(0x10).readS32()}`;
+    if (klass === 'Int64') return obj.add(0x10).readS64().toString();
+    if (klass === 'Boolean') return obj.add(0x10).readU8() !== 0 ? 'true' : 'false';
+    if (klass === 'MPDateTime') return `MPDateTime(${readObjectInt64(obj, 0x0)})`;
+    return pointerSummary(obj);
+  } catch (error) {
+    return '<scalar-err>';
+  }
+}
+
+function readMPDateTimeSummary(obj) {
+  try {
+    if (!obj || obj.isNull()) return '<null>';
+    return `unix=${readObjectInt64(obj, 0x0)}`;
+  } catch (error) {
+    return '<mpdatetime-err>';
+  }
+}
+
+function isInterestingUserDataExceptionFrame(addr) {
+  return (
+    isLikelyUserDataGetFlowCaller(addr) ||
+    isOffsetInRange(addr, 0x28f06c8, 0x28f0860) ||
+    isOffsetInRange(addr, 0x2f49158, 0x2f49424) ||
+    isOffsetInRange(addr, 0x4480a30, 0x4480abc)
+  );
+}
+
+function getInterestingUserDataExceptionTrace(context, limit = 10) {
+  try {
+    const frames = Thread.backtrace(context, Backtracer.ACCURATE);
+    const relevant = frames.find((addr) => isInterestingUserDataExceptionFrame(addr));
+    if (!relevant) return null;
+    return {
+      relevant,
+      summary: frames.slice(0, limit).map((addr) => pointerLocationSummary(addr)).join(' <- '),
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
 function dumpInstructionWindow(label, centerOffset, beforeCount, afterCount) {
   console.log(`[UserDB] ${label} disassembly around 0x${centerOffset.toString(16)}`);
   for (let i = -beforeCount; i <= afterCount; i += 1) {
@@ -418,6 +494,29 @@ function logDivider(label) {
 }
 
 awaitLibil2cpp(() => {
+  if (!MINIMAL_USERDATA_LOGS) {
+    try {
+      const raiseException = typeof Module.findExportByName === 'function'
+        ? Module.findExportByName('libil2cpp.so', 'il2cpp_raise_exception')
+        : null;
+      if (raiseException) {
+        Interceptor.attach(raiseException, {
+          onEnter(args) {
+            const trace = getInterestingUserDataExceptionTrace(this.context);
+            if (!trace) return;
+            console.log(
+              `[UserDB] il2cpp_raise_exception ex=${pointerSummary(args[0])} type=${safeKlassName(args[0])} relevant=${pointerOffsetHex(trace.relevant)} trace=${trace.summary}`,
+            );
+          },
+        });
+        console.log(`[*] Hook il2cpp_raise_exception @ ${raiseException}`);
+      } else {
+        console.log('[*] il2cpp_raise_exception hook skipped');
+      }
+    } catch (error) {
+      console.log(`[*] il2cpp_raise_exception hook failed: ${error}`);
+    }
+
   logDivider('Master DB Hooks');
   dumpInstructionWindow('UserDataGet.InitializeDefault', 0x361acb0, 6, 12);
   dumpInstructionWindow('UserDataGet.RequestAsync entry', 0x361ad5c, 6, 12);
@@ -1005,6 +1104,44 @@ awaitLibil2cpp(() => {
     },
   });
 
+  try {
+    hook('EntityIUser.CreatePrimaryKey', 0x2f49158, {
+      onEnter(args) {
+        this.source = args[0];
+        console.log(`[UserDB] EntityIUser.CreatePrimaryKey source=${pointerSummary(args[0])}`);
+      },
+      onLeave(retval) {
+        console.log(
+          `[UserDB] EntityIUser.CreatePrimaryKey -> ${retval.toString()} source=${pointerSummary(this.source)}`,
+        );
+      },
+    });
+  } catch (error) {
+    console.log(`[*] EntityIUser.CreatePrimaryKey hook failed: ${error}`);
+  }
+
+  try {
+    hook('MPDateTime.ConvertMPDateTime (IUser ctor)', 0x4480a30, {
+      onEnter(args) {
+        const caller = this.returnAddress;
+        if (!isOffsetInRange(caller, 0x2f49270, 0x2f49424)) {
+          this.skip = true;
+          return;
+        }
+        this.skip = false;
+        console.log(
+          `[UserDB] MPDateTime.ConvertMPDateTime caller=${pointerOffsetHex(caller)} input=${readManagedScalarSummary(args[0])}`,
+        );
+      },
+      onLeave(retval) {
+        if (this.skip) return;
+        console.log(`[UserDB] MPDateTime.ConvertMPDateTime -> ${readMPDateTimeSummary(retval)}`);
+      },
+    });
+  } catch (error) {
+    console.log(`[*] MPDateTime.ConvertMPDateTime hook failed: ${error}`);
+  }
+
   hook('DarkServerAPI<object, object>.OnErrorRequest', 0x3f7a170, {
     onEnter(args) {
       console.log(
@@ -1248,4 +1385,116 @@ awaitLibil2cpp(() => {
       );
     },
   });
+
+  }
+
+  if (MINIMAL_USERDATA_LOGS) {
+    try {
+      const raiseException = typeof Module.findExportByName === 'function'
+        ? Module.findExportByName('libil2cpp.so', 'il2cpp_raise_exception')
+        : null;
+      if (raiseException) {
+        Interceptor.attach(raiseException, {
+          onEnter(args) {
+            const trace = getInterestingUserDataExceptionTrace(this.context);
+            if (!trace) return;
+            console.log(
+              `[UserDB] il2cpp_raise_exception ex=${pointerSummary(args[0])} type=${safeKlassName(args[0])} relevant=${pointerOffsetHex(trace.relevant)} trace=${trace.summary}`,
+            );
+          },
+        });
+        console.log(`[*] Hook il2cpp_raise_exception @ ${raiseException}`);
+      }
+    } catch (error) {
+      console.log(`[*] minimal il2cpp_raise_exception hook failed: ${error}`);
+    }
+
+    hook('UserDataGet.RequestAsync(minimal)', 0x361ad5c, {
+      onEnter(args) {
+        userDataRequestSeq += 1;
+        activeUserDataRequestId = userDataRequestSeq;
+        console.log(`[UserDB] RequestAsync req=${activeUserDataRequestId} self=${pointerSummary(args[0])}`);
+      },
+      onLeave(retval) {
+        console.log(`[UserDB] RequestAsync req=${activeUserDataRequestId} -> ${pointerSummary(retval)}`);
+      },
+    });
+
+    hook('EntityIUser.CreatePrimaryKey(minimal)', 0x2f49158, {
+      onEnter(args) {
+        this.source = args[0];
+        console.log(`[UserDB] EntityIUser.CreatePrimaryKey source=${pointerSummary(args[0])}`);
+      },
+      onLeave(retval) {
+        console.log(
+          `[UserDB] EntityIUser.CreatePrimaryKey -> ${retval.toString()} source=${pointerSummary(this.source)}`,
+        );
+      },
+    });
+
+    hook('MPDateTime.ConvertMPDateTime(minimal)', 0x4480a30, {
+      onEnter(args) {
+        const caller = this.returnAddress;
+        if (!isOffsetInRange(caller, 0x2f49270, 0x2f49424)) {
+          this.skip = true;
+          return;
+        }
+        this.skip = false;
+        console.log(
+          `[UserDB] MPDateTime.ConvertMPDateTime caller=${pointerOffsetHex(caller)} input=${readManagedScalarSummary(args[0])}`,
+        );
+      },
+      onLeave(retval) {
+        if (this.skip) return;
+        console.log(`[UserDB] MPDateTime.ConvertMPDateTime -> ${readMPDateTimeSummary(retval)}`);
+      },
+    });
+
+    hook('UserDataGet.<RequestAsync>b__11_1(minimal)', 0x361ae60, {
+      onEnter(args) {
+        console.log(
+          `[UserDB] <RequestAsync>b__11_1 req=${activeUserDataRequestId} self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])}`,
+        );
+      },
+    });
+
+    hook('UserDataGet.<RequestAsync>b__11_3(minimal)', 0x361b318, {
+      onEnter(args) {
+        console.log(
+          `[UserDB] <RequestAsync>b__11_3 req=${activeUserDataRequestId} self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])}`,
+        );
+      },
+    });
+
+    hook('DatabaseBuilderBase.Build(minimal)', 0x3bdbd90, {
+      onEnter(args) {
+        this.self = args[0];
+        console.log(`[UserDB] DatabaseBuilderBase.Build self=${pointerSummary(args[0])}`);
+      },
+      onLeave(retval) {
+        console.log(
+          `[UserDB] DatabaseBuilderBase.Build -> len=${readByteArrayLength(retval)} self=${pointerSummary(this.self)}`,
+        );
+      },
+    });
+
+    hook('DarkUserMemoryDatabase.ctor(byte[])(minimal)', 0x29c4764, {
+      onEnter(args) {
+        this.self = args[0];
+        const data = args[1];
+        console.log(
+          `[UserDB] ctor self=${pointerSummary(args[0])} dataLen=${readByteArrayLength(data)} internString=${args[2].toInt32()} formatterResolver=${pointerSummary(args[3])} maxDegree=${args[4].toInt32()}`,
+        );
+      },
+      onLeave() {
+        console.log(`[UserDB] ctor completed self=${pointerSummary(this.self)}`);
+      },
+    });
+
+    hook('DatabaseDefine.set_User(minimal)', 0x2f45c28, {
+      onEnter(args) {
+        console.log(`[UserDB] set_User value=${pointerSummary(args[0])}`);
+      },
+    });
+  }
 });

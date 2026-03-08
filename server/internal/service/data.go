@@ -65,7 +65,10 @@ func defaultTableNames() []string {
 	return []string{
 		// Extracted from nier-rein-apps DarkUserDataDatabaseBuilderAppendHelper
 		// (parsers/appenders/differs keys). The client should only request these keys.
-		"IUser",
+		// Keep first-entrance core account rows out of the GetUserData phase for now.
+		// Auth/Register baseline diffs already seed them, and runtime append for one
+		// or more of these rows is currently the isolated failure boundary during
+		// title sync.
 		"IUserApple",
 		"IUserAutoSaleSettingDetail",
 		"IUserBeginnerCampaign",
@@ -121,8 +124,8 @@ func defaultTableNames() []string {
 		"IUserGimmickUnlock",
 		"IUserImportantItem",
 		"IUserLimitedOpen",
-		"IUserLogin",
-		"IUserLoginBonus",
+		// "IUserLogin",
+		// "IUserLoginBonus",
 		"IUserMainQuestFlowStatus",
 		"IUserMainQuestMainFlowStatus",
 		"IUserMainQuestProgressStatus",
@@ -143,7 +146,7 @@ func defaultTableNames() []string {
 		"IUserPortalCageStatus",
 		"IUserPossessionAutoConvert",
 		"IUserPremiumItem",
-		"IUserProfile",
+		// "IUserProfile",
 		"IUserPvpDefenseDeck",
 		"IUserPvpStatus",
 		"IUserPvpWeeklyResult",
@@ -154,13 +157,13 @@ func defaultTableNames() []string {
 		"IUserQuestReplayFlowRewardGroup",
 		"IUserQuestSceneChoice",
 		"IUserQuestSceneChoiceHistory",
-		"IUserSetting",
+		// "IUserSetting",
 		"IUserShopItem",
 		"IUserShopReplaceable",
 		"IUserShopReplaceableLineup",
 		"IUserSideStoryQuest",
 		"IUserSideStoryQuestSceneProgressStatus",
-		"IUserStatus",
+		// "IUserStatus",
 		"IUserThought",
 		"IUserTripleDeck",
 		"IUserTutorialProgress",
