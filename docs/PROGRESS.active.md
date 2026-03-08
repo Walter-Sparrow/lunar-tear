@@ -14,76 +14,78 @@ Server-first fix for the 40% stall with minimal client patches, ideally only hos
 - `GetUserDataNameV2` and `GetUserData` both complete at the transport level.
 - The runtime `GetUserData` path uses plain JSON object arrays, not the old base64+MessagePack experiment.
 - The runtime APK diverges from the checked-in source around `CalculatorNetworking` and `UserDataGet`; dump/runtime evidence is more trustworthy than source here.
-- An all-empty user-data response takes the healthy path:
+- `GetUserData` is no longer the active blocker.
+- The current healthy `GetUserData` path now reaches:
   - `DatabaseBuilderBase.Build`
   - non-null `bin`
   - `DarkUserMemoryDatabase.ctor`
   - `UserDataGet.<RequestAsync>b__11_1`
-- A response with `IUser=1` is enough to reproduce the failing path even when the other user tables are empty.
-- The field-by-field `IUser` search already tried the obvious suspects without changing the branch:
-  - `PlayerId`
-  - `OsType`
-  - `PlatformType`
-  - `RegisterDatetime`
-  - `GameStartDatetime`
-- The assembly boundary is now narrow:
-  - `UserDataGet.<RequestAsync>d__11.MoveNext` reaches the tuple loop
-  - the hot call at `0x361B930` resolves to `DarkUserDataDatabaseBuilderAppendHelper.Append(...)`
-  - failing runs never reach the later `DatabaseBuilderBase.Build()` call at `0x361B968`
-- The latest safe runtime slice still shows:
-  - request/await path succeeds
-  - error callback path ends in `UserDataGet.<RequestAsync>b__11_3`
-  - title flips `isError` to `true`
+  - `Title.<SyncUserData>d__7.MoveNext completed ... isError=false`
+- The visible 40% stall still remains, but it is now after successful user-data sync.
+
+## Why GetUserData Failed
+The confirmed failure was the first-entrance core account-table append path during `GetUserData`.
+
+What proved it:
+- `GetUserDataNameV2`, `GetUserData`, and `WhenAll` all succeeded.
+- Failing runs stopped before `DatabaseBuilderBase.Build()` and before `DarkUserMemoryDatabase.ctor`.
+- `IUser=1` alone was enough to reproduce the bad branch.
+- Removing `IUser` alone was not enough; the request still failed while `IUserStatus`, `IUserProfile`, `IUserLogin`, and `IUserLoginBonus` were still present.
+- Removing that whole core account set from `GetUserData` let the builder run and the user DB finish building.
+
+Practical conclusion:
+- do not send first-entrance core account rows through `GetUserData`
+- seed them through `Auth` / `RegisterUser` diff data instead
 
 ## Current Blocker
-The failure is now best described as:
-- payload-dependent
-- isolated to the `IUser` conversion/append path
-- after `GetUserData` transport succeeds
-- before `DatabaseBuilderBase.Build()` runs
+`SyncUserData` now succeeds, but the client still visually stalls at 40% afterward.
 
-The strongest current hypothesis is that the runtime throws a managed exception while converting the `IUser` dictionary row into the real runtime entity.
+The next blocker is after the successful title sync path:
+- `Title.<SyncUserData>d__7.MoveNext` completes with `isError=false`
+- `UserDataGet` completes through `b__11_1`
+- the app still does not advance to the next visible screen
 
-Relevant runtime facts:
-- The runtime `EntityIUser` in `dump.cs` uses `MPDateTime` for `RegisterDatetime` and `GameStartDatetime`.
-- The runtime also has a real `EntityIUser.ctor(Dictionary<string, object>)` path.
-- A direct hook on that ctor was too invasive and caused a crash, so we backed off to safer probes.
+Current focus:
+- runtime `Title` flow after `SyncUserData`
+- `Title.IsNeedGameStartApi()`
+- `Title.OnTitleScreen(...)`
+- `IUserService.GameStartAsync(...)`
+
+`dump.cs` is the source of truth for these title-flow RVAs.
+
+## What We Changed
+Server-side changes that got `GetUserData` past the failure:
+- kept first-entrance core account rows seeded through `Auth` / `RegisterUser` baseline diff
+- stopped advertising these tables from `GetUserDataNameV2`:
+  - `IUser`
+  - `IUserStatus`
+  - `IUserProfile`
+  - `IUserLogin`
+  - `IUserLoginBonus`
+  - `IUserSetting`
+- left the rest of `GetUserData` available, mostly empty, so the builder can still produce a valid user DB
 
 ## Current Instrumentation
-The Frida script is now intentionally trimmed to a minimal signal set.
+The active Frida script is `frida/hooks_userdata_focus.js`.
 
 Enabled logs:
-- `il2cpp_raise_exception` only when the backtrace touches the `UserDataGet` / append / `EntityIUser` / `MPDateTime` window
 - `UserDataGet.RequestAsync`
 - `UserDataGet.<RequestAsync>b__11_1`
 - `UserDataGet.<RequestAsync>b__11_3`
-- `MPDateTime.ConvertMPDateTime` only when called from the runtime `EntityIUser` ctor window
 - `DatabaseBuilderBase.Build`
 - `DarkUserMemoryDatabase.ctor`
-- `DatabaseDefine.set_User`
-
-Disabled as obsolete/noisy:
-- transport and callback correlation spam
-- broad awaiter tracing
-- legacy datasource wiring logs
-- disassembly dumps
-- old master-data tracing
-- error-dialog and asset retry noise
-
-The old hooks are still kept in the file behind `ENABLE_LEGACY_VERBOSE_HOOKS = false` in case they are needed later.
+- `Title.<SyncUserData>d__7.MoveNext`
+- `Title.<SyncUserData>b__0`
+- `Title.IsNeedGameStartApi`
+- `Title.<OnTitleScreen>d__44.MoveNext`
+- `IUserService.GameStartAsync`
+- focused `TaskAwaiter<TResult>.GetResult` logs for user-data/title flow only
 
 ## Immediate Next Step
-Run with the reduced hook set and capture the whole Frida log.
+Run with the focused title-flow hook set and capture:
+- `[Title] IsNeedGameStartApi ...`
+- `[Title] IUserService.GameStartAsync ...`
+- `[Title] <OnTitleScreen>d__44 ...`
+- `[Flow] TaskAwaiter<TResult>.GetResult ...`
 
-The highest-value lines are now:
-- `[UserDB] il2cpp_raise_exception ...`
-- `[UserDB] MPDateTime.ConvertMPDateTime ...`
-- `[UserDB] <RequestAsync>b__11_3 ...`
-- and, if the run succeeds further, `Build` / `ctor` / `set_User`
-
-## Working Theory
-If the next exception is:
-- `InvalidCastException`: the `IUser` JSON value shape is wrong for runtime conversion
-- `KeyNotFoundException`: a required dictionary key is missing or differently named
-- `NullReferenceException`: one converted field is accepted structurally but then dereferenced as null
-- a date/time-related failure near `MPDateTime.ConvertMPDateTime`: the timestamp representation is still wrong for runtime expectations
+The goal now is to identify which post-`SyncUserData` title step keeps the app visually stuck at 40%.

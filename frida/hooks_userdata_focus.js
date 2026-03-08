@@ -85,6 +85,15 @@ function readObjectInt64(obj, fieldOffset) {
   }
 }
 
+function readObjectBool(obj, fieldOffset) {
+  try {
+    if (!obj || obj.isNull()) return null;
+    return obj.add(0x10 + fieldOffset).readU8() !== 0;
+  } catch (error) {
+    return null;
+  }
+}
+
 function readRawInt32(rawPtr, fieldOffset) {
   try {
     if (!rawPtr || rawPtr.isNull()) return null;
@@ -281,6 +290,20 @@ function isLikelyUserDataPipelineCaller(addr) {
   }
 }
 
+function isLikelyTitlePipelineCaller(addr) {
+  try {
+    if (!addr || addr.isNull() || !libil2cpp) return false;
+    const offset = addr.sub(libil2cpp).toUInt32();
+    return (
+      (offset >= 0x292f898 && offset <= 0x292feb4) ||
+      (offset >= 0x29334d0 && offset <= 0x293398c) ||
+      (offset >= 0x30be5e8 && offset <= 0x30be690)
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
 function readManagedScalarSummary(obj) {
   try {
     if (!obj || obj.isNull()) return '<null>';
@@ -386,17 +409,17 @@ awaitLibil2cpp(() => {
 
   hook('TaskAwaiter<TResult>.GetResult(UserData pipeline)', 0x4743464, {
     onEnter(args) {
-      if (!isLikelyUserDataPipelineCaller(this.returnAddress)) return;
+      if (!isLikelyUserDataPipelineCaller(this.returnAddress) && !isLikelyTitlePipelineCaller(this.returnAddress)) return;
       this.shouldLog = true;
       this.caller = moduleOffsetHex(this.returnAddress);
       const task = readRawPointer(args[0], 0x0);
       console.log(
-        `[UserDB] TaskAwaiter<TResult>.GetResult caller=${this.caller} awaiter=${args[0]} task=${pointerSummary(task)}`,
+        `[Flow] TaskAwaiter<TResult>.GetResult caller=${this.caller} awaiter=${args[0]} task=${pointerSummary(task)}`,
       );
     },
     onLeave(retval) {
       if (!this.shouldLog) return;
-      console.log(`[UserDB] TaskAwaiter<TResult>.GetResult -> ${pointerSummary(retval)}`);
+      console.log(`[Flow] TaskAwaiter<TResult>.GetResult -> ${pointerSummary(retval)}`);
       if (this.caller === '0x361b758') {
         console.log(`[UserDB] TaskAwaiter<TResult>.GetResult names ${readStringListListSummary(retval)}`);
       } else if (this.caller === '0x361b8ac') {
@@ -426,6 +449,8 @@ awaitLibil2cpp(() => {
         console.log(
           `[UserDB] TaskAwaiter<TResult>.GetResult response userDataJson=${pointerSummary(userDataJson)} outer=${readListSize(userDataJson)}`,
         );
+      } else if (isLikelyTitlePipelineCaller(libil2cpp.add(parseInt(this.caller, 16)))) {
+        console.log(`[Title] TaskAwaiter<TResult>.GetResult caller=${this.caller} result=${pointerSummary(retval)}`);
       }
     },
   });
@@ -499,6 +524,79 @@ awaitLibil2cpp(() => {
       console.log(
         `[UserDB] <RequestAsync>b__11_1 req=${activeUserDataRequestId} self=${pointerSummary(args[0])} stateArg=${pointerSummary(args[1])}`,
       );
+    },
+  });
+
+  hook('Title.<SyncUserData>b__0', 0x30bf130, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(
+        `[Title] <SyncUserData>b__0 self=${pointerSummary(args[0])} isErrorBefore=${readObjectBool(args[0], 0x0)}`,
+      );
+    },
+    onLeave() {
+      console.log(
+        `[Title] <SyncUserData>b__0 completed isErrorAfter=${readObjectBool(this.self, 0x0)}`,
+      );
+    },
+  });
+
+  hook('Title.<SyncUserData>d__7.MoveNext', 0x29334d0, {
+    onEnter(args) {
+      this.self = args[0];
+      const state = readRawInt32(args[0], 0x0);
+      const displayClass = readRawPointer(args[0], 0x20);
+      const isError = displayClass.isNull() ? null : readObjectBool(displayClass, 0x0);
+      console.log(
+        `[Title] <SyncUserData>d__7.MoveNext self=${pointerSummary(args[0])} state=${state} displayClass=${pointerSummary(displayClass)} isError=${isError}`,
+      );
+    },
+    onLeave() {
+      const state = readRawInt32(this.self, 0x0);
+      const displayClass = readRawPointer(this.self, 0x20);
+      const isError = displayClass.isNull() ? null : readObjectBool(displayClass, 0x0);
+      console.log(
+        `[Title] <SyncUserData>d__7.MoveNext completed self=${pointerSummary(this.self)} state=${state} displayClass=${pointerSummary(displayClass)} isError=${isError}`,
+      );
+    },
+  });
+
+  hook('Title.IsNeedGameStartApi', 0x30be14c, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(`[Title] IsNeedGameStartApi self=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      console.log(`[Title] IsNeedGameStartApi -> ${retval.toInt32()}`);
+    },
+  });
+
+  hook('Title.<OnTitleScreen>d__44.MoveNext', 0x292f898, {
+    onEnter(args) {
+      this.self = args[0];
+      const state = readRawInt32(args[0], 0x0);
+      const titleSelf = readRawPointer(args[0], 0x18);
+      console.log(
+        `[Title] <OnTitleScreen>d__44.MoveNext self=${pointerSummary(args[0])} state=${state} title=${pointerSummary(titleSelf)}`,
+      );
+    },
+    onLeave() {
+      const state = readRawInt32(this.self, 0x0);
+      const titleSelf = readRawPointer(this.self, 0x18);
+      console.log(
+        `[Title] <OnTitleScreen>d__44.MoveNext completed self=${pointerSummary(this.self)} state=${state} title=${pointerSummary(titleSelf)}`,
+      );
+    },
+  });
+
+  hook('IUserService.GameStartAsync', 0x27e58d8, {
+    onEnter(args) {
+      console.log(
+        `[Title] IUserService.GameStartAsync self=${pointerSummary(args[0])} request=${pointerSummary(args[1])}`,
+      );
+    },
+    onLeave(retval) {
+      console.log(`[Title] IUserService.GameStartAsync -> ${pointerSummary(retval)}`);
     },
   });
 
