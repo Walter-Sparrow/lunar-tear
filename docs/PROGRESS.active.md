@@ -36,6 +36,7 @@ Reach the first playable/home flow with minimal client patching and a server-fir
 - The active-mission interruption dialog after `CheckBeforeGamePlay` was caused by seeded running-main-quest state in `GameStart`.
 - Clearing the initial `IUserMainQuestProgressStatus` / `IUserMainQuestFlowStatus` running-state fields removed that dialog and allowed natural main-story startup to continue.
 - `GimmickService` is now implemented server-side well enough for `InitSequenceScheduleAsync` to return `OK`.
+- `GachaService` is now registered server-side and no longer fails with `unknown service apb.api.gacha.GachaService`.
 
 ## What Was Proven About `GameStart`
 - The old immediate `GameStart` crash was inside `UserDiffUpdateInterceptor` while applying `DiffUserData`.
@@ -110,6 +111,11 @@ Reach the first playable/home flow with minimal client patching and a server-fir
   - `IUserMainQuestProgressStatus`
 - `QuestService.StartMainQuest()` now sends lower-camel `IUserQuest` with unix-millis `latestStartDatetime` and explicit `DeleteKeysJson = "[]"`.
 - `QuestService`, `TutorialService`, `GimmickService`, and `NotificationService` now mutate/read the shared in-memory store rather than relying only on stateless mock diffs.
+- `GachaService` is now registered and store-backed for:
+  - catalog/list reads
+  - single-gacha lookups
+  - reward-gacha availability counters
+  - converted-gacha-medal response state
 - `FinishMainQuest()` no longer hardcodes a final scene id.
   - It preserves the latest main-quest scene pointer already established by `UpdateMainQuestSceneProgress(...)`.
   - It only clears the active/running quest markers in `IUserMainQuestFlowStatus` / `IUserMainQuestProgressStatus`.
@@ -143,8 +149,10 @@ What is now proven:
   - follow-up `QuestService/UpdateMainQuestSceneProgress`
   - `GimmickService/InitSequenceSchedule`
 - The previous `GimmickService/InitSequenceScheduleAsync` `Unimplemented` blocker is resolved.
+- The previous `GachaService` `Unimplemented` blocker is also resolved.
 - Current observed runtime behavior:
   - the client reaches mission startup, quest completion, and later gimmick initialization without transport or service-name failure
+  - after that, the client now reaches the first gacha-service boundary instead of aborting on a missing service
   - the latest boundary is no longer the earlier intro-camera replay loop
   - the client now reaches `FinishMainQuest`, applies the follow-up scene-progress update, then ends up on a black screen with music
   - observed sequence:
@@ -168,6 +176,7 @@ The current trusted boundary is later:
 - the client now enters the mission start sequence naturally
 - quest-start progress diffs are being consumed far enough to reach later outgame/gameplay initialization
 - `GimmickService/InitSequenceSchedule` now returns `OK`
+- `GachaService` now returns `OK` for the currently reached calls instead of `Unimplemented`
 - `FinishMainQuest` now returns `OK`
 - the post-finish scene-progress update also returns `OK`
 - the current failure mode is now a black screen with music after quest completion, rather than an immediate missing-service abort
@@ -195,6 +204,7 @@ Current useful probes:
 - `QuestService/UpdateMainQuestSceneProgressAsync`
 - `QuestService/FinishMainQuestAsync`
 - late post-quest service dispatches (now including `GimmickService/InitSequenceScheduleAsync`)
+- `GachaService` calls reached after the post-quest handoff
 - post-quest black-screen handoff behavior
 - `RequestContext..ctor`
 - `ErrorHandlingInterceptor.SendAsync`
@@ -235,6 +245,8 @@ Most relevant symbols / areas:
 - `IQuestService.UpdateMainQuestSceneProgressAsync`
 - `IQuestService.FinishMainQuestAsync`
 - `IGimmickService.InitSequenceScheduleAsync`
+- `IGachaService.GetGachaListAsync`
+- `IGachaService.GetGachaAsync`
 - gameplay/world-state transition after `FinishMainQuest` and scene `3` progress
 - `RequestContext..ctor`
 - `ErrorHandlingInterceptor.SendAsync`

@@ -47,6 +47,7 @@ type Store struct {
 	userIDsByUUID   map[string]int64
 	sessionToUserID map[string]int64
 	sessions        map[string]SessionState
+	gachaCatalog    map[int32]GachaCatalogEntry
 }
 
 type SessionState struct {
@@ -80,6 +81,7 @@ type UserState struct {
 	LoginBonus    UserLoginBonusState
 	Tutorial      TutorialProgressState
 	MainQuest     MainQuestState
+	Gacha         GachaState
 	Notifications NotificationState
 
 	Characters     map[int32]CharacterState
@@ -302,6 +304,44 @@ type NotificationState struct {
 	IsExistUnreadInformation  bool
 }
 
+type GachaState struct {
+	RewardAvailable        bool
+	TodaysCurrentDrawCount int32
+	DailyMaxCount          int32
+	ConvertedGachaMedal    ConvertedGachaMedalState
+}
+
+type ConvertedGachaMedalState struct {
+	ConvertedMedalPossession []ConsumableItemState
+	ObtainPossession         *ConsumableItemState
+}
+
+type ConsumableItemState struct {
+	ConsumableItemID int32
+	Count            int32
+}
+
+type GachaCatalogEntry struct {
+	GachaID                    int32
+	GachaLabelType             int32
+	GachaModeType              int32
+	GachaAutoResetType         int32
+	GachaAutoResetPeriod       int32
+	NextAutoResetDatetime      int64
+	IsUserGachaUnlock          bool
+	StartDatetime              int64
+	EndDatetime                int64
+	RelatedMainQuestChapterID  int32
+	RelatedEventQuestChapterID int32
+	PromotionMovieAssetID      int32
+	GachaMedalID               int32
+	GachaDecorationType        int32
+	SortOrder                  int32
+	IsInactive                 bool
+	InformationID              int32
+	GachaMode                  []byte
+}
+
 func New(clock Clock) *Store {
 	if clock == nil {
 		clock = time.Now
@@ -314,6 +354,7 @@ func New(clock Clock) *Store {
 		userIDsByUUID:   make(map[string]int64),
 		sessionToUserID: make(map[string]int64),
 		sessions:        make(map[string]SessionState),
+		gachaCatalog:    make(map[int32]GachaCatalogEntry),
 	}
 }
 
@@ -392,6 +433,27 @@ func (s *Store) DefaultUserID() int64 {
 		}
 	}
 	return minUserID
+}
+
+func (s *Store) SnapshotGachaCatalog() []GachaCatalogEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]GachaCatalogEntry, 0, len(s.gachaCatalog))
+	for _, entry := range s.gachaCatalog {
+		out = append(out, cloneGachaCatalogEntry(entry))
+	}
+	return out
+}
+
+func (s *Store) ReplaceGachaCatalog(entries []GachaCatalogEntry) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.gachaCatalog = make(map[int32]GachaCatalogEntry, len(entries))
+	for _, entry := range entries {
+		s.gachaCatalog[entry.GachaID] = cloneGachaCatalogEntry(entry)
+	}
 }
 
 func normalizeUUID(uuid string) string {
@@ -475,6 +537,15 @@ func seedUserState(userID int64, uuid string, nowMillis int64) *UserState {
 			ProgressPhase: 0,
 			ChoiceID:      0,
 			LatestVersion: 0,
+		},
+		Gacha: GachaState{
+			RewardAvailable:        false,
+			TodaysCurrentDrawCount: 0,
+			DailyMaxCount:          0,
+			ConvertedGachaMedal: ConvertedGachaMedalState{
+				ConvertedMedalPossession: []ConsumableItemState{},
+				ObtainPossession:         nil,
+			},
 		},
 		MainQuest: MainQuestState{
 			CurrentQuestFlowType:     0,
@@ -603,5 +674,28 @@ func (u UserState) clone() UserState {
 		Sequences:        maps.Clone(u.Gimmick.Sequences),
 		Unlocks:          maps.Clone(u.Gimmick.Unlocks),
 	}
+	out.Gacha = GachaState{
+		RewardAvailable:        u.Gacha.RewardAvailable,
+		TodaysCurrentDrawCount: u.Gacha.TodaysCurrentDrawCount,
+		DailyMaxCount:          u.Gacha.DailyMaxCount,
+		ConvertedGachaMedal: ConvertedGachaMedalState{
+			ConvertedMedalPossession: append([]ConsumableItemState(nil), u.Gacha.ConvertedGachaMedal.ConvertedMedalPossession...),
+			ObtainPossession:         cloneConsumableItemPtr(u.Gacha.ConvertedGachaMedal.ObtainPossession),
+		},
+	}
 	return out
+}
+
+func cloneGachaCatalogEntry(entry GachaCatalogEntry) GachaCatalogEntry {
+	out := entry
+	out.GachaMode = append([]byte(nil), entry.GachaMode...)
+	return out
+}
+
+func cloneConsumableItemPtr(item *ConsumableItemState) *ConsumableItemState {
+	if item == nil {
+		return nil
+	}
+	out := *item
+	return &out
 }

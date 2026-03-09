@@ -101,6 +101,7 @@ func main() {
 	pb.RegisterConfigServiceServer(grpcServer, service.NewConfigServiceServer(*host, int32(*grpcPort), octoURL))
 	pb.RegisterDataServiceServer(grpcServer, service.NewDataServiceServer(userStore))
 	pb.RegisterTutorialServiceServer(grpcServer, service.NewTutorialServiceServer(userStore))
+	pb.RegisterGachaServiceServer(grpcServer, service.NewGachaServiceServer(userStore))
 	pb.RegisterGamePlayServiceServer(grpcServer, service.NewGameplayServiceServer())
 	pb.RegisterGimmickServiceServer(grpcServer, service.NewGimmickServiceServer(userStore))
 	pb.RegisterQuestServiceServer(grpcServer, service.NewQuestServiceServer(userStore))

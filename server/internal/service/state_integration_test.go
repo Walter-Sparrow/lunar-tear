@@ -130,6 +130,68 @@ func TestInitSequenceScheduleReturnsStoreBackedGimmickTables(t *testing.T) {
 	}
 }
 
+func TestGachaServiceReadsStoreBackedCatalogAndRewardState(t *testing.T) {
+	userStore := store.New(func() time.Time {
+		return time.Unix(1_700_000_000, 0)
+	})
+	userStore.ReplaceGachaCatalog([]store.GachaCatalogEntry{
+		{
+			GachaID:        100,
+			GachaLabelType: 1,
+			GachaModeType:  1,
+			StartDatetime:  time.Unix(1_700_000_000, 0).UnixMilli(),
+			EndDatetime:    time.Unix(1_700_086_400, 0).UnixMilli(),
+			SortOrder:      10,
+		},
+	})
+
+	userService := NewUserServiceServer(userStore)
+	gachaService := NewGachaServiceServer(userStore)
+
+	authResp, err := userService.Auth(context.Background(), &pb.AuthUserRequest{
+		Uuid:      "user-4",
+		Signature: "sig",
+	})
+	if err != nil {
+		t.Fatalf("Auth returned error: %v", err)
+	}
+	_, ok := userStore.UpdateUser(authResp.UserId, func(user *store.UserState) {
+		user.Gacha.RewardAvailable = true
+		user.Gacha.TodaysCurrentDrawCount = 2
+		user.Gacha.DailyMaxCount = 5
+		user.Gacha.ConvertedGachaMedal.ConvertedMedalPossession = []store.ConsumableItemState{
+			{ConsumableItemID: 3001, Count: 7},
+		}
+		user.Gacha.ConvertedGachaMedal.ObtainPossession = &store.ConsumableItemState{
+			ConsumableItemID: 3002,
+			Count:            1,
+		}
+	})
+	if !ok {
+		t.Fatal("failed to update user gacha state")
+	}
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-session-key", authResp.SessionKey))
+	listResp, err := gachaService.GetGachaList(ctx, &pb.GetGachaListRequest{GachaLabelType: []int32{1}})
+	if err != nil {
+		t.Fatalf("GetGachaList returned error: %v", err)
+	}
+	if len(listResp.Gacha) != 1 || listResp.Gacha[0].GachaId != 100 {
+		t.Fatalf("GetGachaList returned %+v, want seeded catalog entry", listResp.Gacha)
+	}
+	if got := listResp.ConvertedGachaMedal.GetConvertedMedalPossession(); len(got) != 1 || got[0].ConsumableItemId != 3001 {
+		t.Fatalf("ConvertedGachaMedal converted possession = %+v, want seeded state", got)
+	}
+
+	rewardResp, err := gachaService.GetRewardGacha(ctx, &emptypb.Empty{})
+	if err != nil {
+		t.Fatalf("GetRewardGacha returned error: %v", err)
+	}
+	if !rewardResp.Available || rewardResp.TodaysCurrentDrawCount != 2 || rewardResp.DailyMaxCount != 5 {
+		t.Fatalf("GetRewardGacha = %+v, want seeded reward state", rewardResp)
+	}
+}
+
 func contains(s, want string) bool {
 	return len(s) >= len(want) && (s == want || contextContains(s, want))
 }
