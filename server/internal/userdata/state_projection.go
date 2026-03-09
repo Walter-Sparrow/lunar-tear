@@ -104,6 +104,7 @@ func FullClientTableMap(user store.UserState) map[string]string {
 	userDeckCharacterJSON, _ := encodeJSONMaps(sortedDeckCharacterRecords(user)...)
 	userDeckJSON, _ := encodeJSONMaps(sortedDeckRecords(user)...)
 	userQuestJSON, _ := encodeJSONMaps(sortedQuestRecords(user)...)
+	userQuestMissionJSON, _ := encodeJSONMaps(sortedQuestMissionRecords(user)...)
 	userMissionJSON, _ := encodeJSONMaps(sortedMissionRecords(user)...)
 	userGimmickJSON, _ := encodeJSONMaps(sortedGimmickRecords(user)...)
 	userGimmickOrnamentProgressJSON, _ := encodeJSONMaps(sortedGimmickOrnamentProgressRecords(user)...)
@@ -130,6 +131,7 @@ func FullClientTableMap(user store.UserState) map[string]string {
 		"IUserMainQuestProgressStatus": mainQuestProgressJSON,
 		"IUserMainQuestSeasonRoute":    mainQuestSeasonRouteJSON,
 		"IUserQuest":                   userQuestJSON,
+		"IUserQuestMission":            userQuestMissionJSON,
 		"IUserTutorialProgress":        userTutorialProgressJSON,
 		"IUserGimmick":                 userGimmickJSON,
 		"IUserGimmickOrnamentProgress": userGimmickOrnamentProgressJSON,
@@ -150,6 +152,7 @@ func FirstEntranceClientTableMap(user store.UserState) map[string]string {
 		"IUserGem",
 		"IUserTutorialProgress",
 		"IUserQuest",
+		"IUserQuestMission",
 		"IUserMission",
 		"IUserMainQuestFlowStatus",
 		"IUserMainQuestMainFlowStatus",
@@ -340,6 +343,34 @@ func sortedQuestRecords(user store.UserState) []map[string]any {
 			"dailyClearCount":     row.DailyClearCount,
 			"lastClearDatetime":   row.LastClearDatetime,
 			"shortestClearFrames": row.ShortestClearFrames,
+			"latestVersion":       row.LatestVersion,
+		})
+	}
+	return records
+}
+
+func sortedQuestMissionRecords(user store.UserState) []map[string]any {
+	keys := make([]store.QuestMissionKey, 0, len(user.QuestMissions))
+	for key := range user.QuestMissions {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].QuestID != keys[j].QuestID {
+			return keys[i].QuestID < keys[j].QuestID
+		}
+		return keys[i].QuestMissionID < keys[j].QuestMissionID
+	})
+
+	records := make([]map[string]any, 0, len(keys))
+	for _, key := range keys {
+		row := user.QuestMissions[key]
+		records = append(records, map[string]any{
+			"userId":              user.UserID,
+			"questId":             row.QuestID,
+			"questMissionId":      row.QuestMissionID,
+			"progressValue":       row.ProgressValue,
+			"isClear":             row.IsClear,
+			"latestClearDatetime": row.LatestClearDatetime,
 			"latestVersion":       row.LatestVersion,
 		})
 	}

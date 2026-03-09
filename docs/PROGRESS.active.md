@@ -111,6 +111,7 @@ Reach the first playable/home flow with minimal client patching and a server-fir
   - `IUserMainQuestFlowStatus`
   - `IUserMainQuestMainFlowStatus`
   - `IUserMainQuestProgressStatus`
+- Quest scene/finish diffs now also include `IUserMainQuestSeasonRoute`, matching the main-quest hierarchy tables already projected by `GetUserData`.
 - `QuestService.StartMainQuest()` now sends lower-camel `IUserQuest` with unix-millis `latestStartDatetime` and explicit `DeleteKeysJson = "[]"`.
 - `QuestService`, `TutorialService`, `GimmickService`, and `NotificationService` now mutate/read the shared in-memory store rather than relying only on stateless mock diffs.
 - `GachaService` is now registered and store-backed for:
@@ -127,6 +128,10 @@ Reach the first playable/home flow with minimal client patching and a server-fir
   - tracking active/inactive battle state
   - recording per-user start/finish counts
   - recording the latest party counts, battle-binary size, and elapsed frame count
+- Main-quest progression is now owned by a dedicated master-data-driven engine in `server/internal/questflow/engine.go`.
+  - Scene descriptors now distinguish bootstrap/background, running, transition, battle-entry, terminal, and post-clear-tail phases.
+  - `QuestService` scene/start/finish RPCs now delegate to that engine instead of mutating quest state ad hoc in handlers.
+  - Store bootstrap profiles are now applied through the same engine, rather than hardcoded `Quests` / `QuestMissions` snapshots in `store.go`.
 - `FinishMainQuest()` no longer hardcodes a final scene id.
   - It preserves the latest main-quest scene pointer already established by `UpdateMainQuestSceneProgress(...)`.
   - It only clears the active/running quest markers in `IUserMainQuestFlowStatus` / `IUserMainQuestProgressStatus`.
@@ -169,15 +174,29 @@ What is now proven:
   - mailbox/gift service calls can now be answered from store-backed state instead of failing at dispatch
   - battle-wave RPCs can now be answered and recorded in store-backed battle state instead of failing at dispatch
   - the latest boundary is no longer the earlier intro-camera replay loop
-  - the client now reaches `FinishMainQuest`, applies the follow-up scene-progress update, then ends up on a black screen with music
-  - observed sequence:
-    - `UpdateMainFlowSceneProgress(questSceneId=2)`
-    - `StartMainQuest(questId=1)`
-    - `GetHeaderNotification`
-    - `UpdateMainQuestSceneProgress(questSceneId=2)`
-    - `FinishMainQuest(questId=1, storySkipType=3)`
-    - immediate `UpdateMainQuestSceneProgress(questSceneId=3)`
+  - the previous `scene 13` handoff stall is no longer the active blocker
+  - on `UpdateMainQuestSceneProgress(questSceneId=13)`, the active `IUserQuest` row for `questId=2` now projects as a fully cleared row:
+    - `questStateType=3`
+    - `clearCount=1`
+    - `dailyClearCount=1`
+    - non-zero `lastClearDatetime`
+  - runtime probe proof:
+    - the client reaches `Story.ApplyInQuestLastScene`
+    - `Story.IsClearedQuestWithQuestId(questId=2)` no longer blocks the handoff
+    - the client now issues `QuestService/FinishMainQuest`
+  - current observed sequence after that fix:
+    - `UpdateMainFlowSceneProgress(questSceneId=8)`
+    - `UpdateMainFlowSceneProgress(questSceneId=9)`
+    - `UpdateMainQuestSceneProgress(questSceneId=11)`
+    - `BattleService/StartWave`
+    - `BattleService/FinishWave`
     - `GimmickService/InitSequenceSchedule`
+    - `UpdateMainQuestSceneProgress(questSceneId=13)`
+    - `FinishMainQuest(questId=2, isMainFlow=false, storySkipType=4)`
+    - later `GimmickService/InitSequenceSchedule`
+  - the new blocker is later than the old black-screen-with-music boundary:
+    - the client gets through the old `scene 13` completion handoff
+    - it now stalls after the post-`FinishMainQuest` loading phase
 
 ## Current Concern
 The active blocker is no longer JSON shape, diff application, request-body transport, `CheckBeforeGamePlay`, the initial main-quest startup RPCs, missing `GimmickService`, or the old early gameplay re-entry loop.
@@ -194,18 +213,33 @@ The current trusted boundary is later:
 - `GachaService` now returns `OK` for the currently reached calls instead of `Unimplemented`
 - `GiftService` now returns `OK` for the currently reached calls instead of `Unimplemented`
 - `BattleService` now returns `OK` for the currently reached calls instead of `Unimplemented`
-- `FinishMainQuest` now returns `OK`
-- the post-finish scene-progress update also returns `OK`
-- the current failure mode is now a black screen with music after quest completion, rather than an immediate missing-service abort
+- `UpdateMainQuestSceneProgress(questSceneId=13)` now returns a fully cleared `IUserQuest` shape for `questId=2`
+- the client-side `Story.IsClearedQuestWithQuestId(2)` gate is now satisfied far enough for the client to continue into `FinishMainQuest`
+- `FinishMainQuest(questId=2, isMainFlow=false, storySkipType=4)` now returns `OK`
+- the current failure mode is now a later post-`FinishMainQuest` loading stall, rather than the earlier `scene 13` handoff stall
 
 Working hypothesis:
 - The currently trusted 14-table `GameStart` diff is sufficient to get through diff application and title completion.
-- With `GamePlayService`, early quest-state diffs, `GimmickService`, and `FinishMainQuest` corrected, the remaining blocker is now a later post-quest state/progression handoff.
-- The likely issue is no longer "missing next service", but inconsistent server-side quest/world-state after quest completion, especially around the transition immediately after `FinishMainQuest` and the scene-progress update to scene `3`.
+- With `GamePlayService`, early quest-state diffs, `GimmickService`, the `scene 13` clear-state projection, and `FinishMainQuest` corrected, the remaining blocker is now a later post-quest world/load handoff.
+- The likely issue is no longer "missing next service", and no longer the old `scene 13` clear gate.
+- The strongest current server-side suspicion is incomplete post-`FinishMainQuest` world progression for the `questId=2` completion path:
+  - the client now calls `FinishMainQuest`
+  - the request currently arrives as `isMainFlow=false`
+  - our engine currently only applies next-main-quest activation when `req.IsMainFlow == true`
+  - this may leave the client with a finished quest row but without the next story/world transition it expects after loading
 - One cleanup already made from that investigation:
   - `FinishMainQuest` no longer overwrites the scene pointer with a hardcoded `3`
   - the scene pointer is now owned by the preceding/follow-up `UpdateMainQuestSceneProgress(...)` calls
-- The next investigation should focus on what state must change after `FinishMainQuest` / `UpdateMainQuestSceneProgress(3)` so the client leaves the black-screen state and proceeds into the intended outgame flow.
+- Another cleanup already proven from the same investigation:
+  - terminal quest-progress updates now materialize a fully cleared `IUserQuest` row before `FinishMainQuest`
+  - this moved the boundary forward from "stuck inside `ApplyInQuestLastScene`" to "client issues `FinishMainQuest` and then stalls later"
+- The newest refactor replaced the previous bootstrap/auto-clear hacks with engine-owned sequence handoff rules derived from master data.
+- Local deterministic verification now proves the `main-quest-scene-9` bootstrap profile is reproduced by replaying the same engine transition (`scene 9`) from a fresh store state, including:
+  - quest `1` cleared
+  - quest `2` active
+  - quest `2` mission rows materialized
+  - main-quest scene/flow pointers at `scene 9`
+- The next investigation should focus on the post-`FinishMainQuest(questId=2, isMainFlow=false)` loading path, using the existing Frida probes to identify which world/story transition the client expects after the quest-2 completion handoff.
 
 ## Active Instrumentation
 Primary scripts:
@@ -221,6 +255,7 @@ Current useful probes:
 - `QuestService/UpdateMainQuestSceneProgressAsync`
 - `QuestService/FinishMainQuestAsync`
 - late post-quest service dispatches (now including `GimmickService/InitSequenceScheduleAsync`)
+- post-`FinishMainQuest(questId=2, isMainFlow=false)` loading handoff behavior
 - `GachaService` calls reached after the post-quest handoff
 - `GiftService` calls reached after the post-quest handoff
 - `BattleService` calls reached after the post-quest handoff
@@ -270,16 +305,16 @@ Most relevant symbols / areas:
 - `IGiftService.ReceiveGiftAsync`
 - `IBattleService.StartWaveAsync`
 - `IBattleService.FinishWaveAsync`
-- gameplay/world-state transition after `FinishMainQuest` and scene `3` progress
+- gameplay/world-state transition after `FinishMainQuest(questId=2, isMainFlow=false)`
 - `RequestContext..ctor`
 - `ErrorHandlingInterceptor.SendAsync`
 - `ErrorHandlingInterceptor.ErrorHandling`
 - `ResponseContext<T>.WaitResponseAsync`
 
 ## Immediate Next Step
-Investigate the post-quest black-screen handoff after `FinishMainQuest` and `UpdateMainQuestSceneProgress(questSceneId=3)`.
+Investigate the post-`FinishMainQuest(questId=2, isMainFlow=false)` loading stall.
 
 Goal of that step:
-- determine what state transition is still missing after quest completion
-- identify whether the follow-up scene-progress update should clear or advance additional quest/world state beyond the now-fixed `FinishMainQuest` cleanup
-- establish the next concrete RPC or table transition needed to leave the black screen
+- determine what story/world transition is still missing after the now-fixed `scene 13` clear handoff
+- verify whether the quest-2 finish path must still activate or expose additional next-quest / main-flow state even though the request currently arrives as `isMainFlow=false`
+- establish the next concrete RPC, table transition, or hierarchy update needed to leave the post-load stall

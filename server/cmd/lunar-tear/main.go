@@ -10,13 +10,16 @@ import (
 	"strconv"
 
 	pb "lunar-tear/server/gen/proto"
+	"lunar-tear/server/internal/questflow"
 	"lunar-tear/server/internal/service"
 	"lunar-tear/server/internal/store"
 
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 )
 
 // loggingListener wraps a net.Listener and logs every accepted connection.
@@ -39,6 +42,7 @@ func main() {
 	httpPort := flag.Int("http-port", 8080, "HTTP server port (Octo API)")
 	host := flag.String("host", "127.0.0.1", "hostname the client will connect to")
 	resourcesBaseURL := flag.String("resources-base-url", "", "Resources base URL for list.bin rewrite (must be exactly 43 chars); empty = derive from host (so client uses our server for assets)")
+	bootstrapProfile := flag.String("bootstrap-profile", string(store.BootstrapProfileFresh), "Initial store bootstrap profile (fresh, main-quest-scene-9)")
 	flag.Parse()
 
 	// Octo base URL: client uses this to fetch list and will see rewritten asset URLs if resourcesBaseURL is set
@@ -94,8 +98,11 @@ func main() {
 
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(loggingInterceptor),
+		grpc.UnknownServiceHandler(loggingUnknownService),
 	)
-	userStore := store.New(nil)
+	questEngine := questflow.MustLoad()
+	userStore := store.New(nil, store.WithBootstrap(store.BootstrapProfile(*bootstrapProfile), questEngine))
+	log.Printf("store bootstrap profile: %s", *bootstrapProfile)
 
 	pb.RegisterUserServiceServer(grpcServer, service.NewUserServiceServer(userStore))
 	pb.RegisterBattleServiceServer(grpcServer, service.NewBattleServiceServer(userStore))
@@ -106,7 +113,7 @@ func main() {
 	pb.RegisterGiftServiceServer(grpcServer, service.NewGiftServiceServer(userStore))
 	pb.RegisterGamePlayServiceServer(grpcServer, service.NewGameplayServiceServer())
 	pb.RegisterGimmickServiceServer(grpcServer, service.NewGimmickServiceServer(userStore))
-	pb.RegisterQuestServiceServer(grpcServer, service.NewQuestServiceServer(userStore))
+	pb.RegisterQuestServiceServer(grpcServer, service.NewQuestServiceServer(userStore, questEngine))
 	pb.RegisterNotificationServiceServer(grpcServer, service.NewNotificationServiceServer(userStore))
 
 	reflection.Register(grpcServer)
@@ -132,4 +139,15 @@ func loggingInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo
 		log.Printf("<<< %s OK", info.FullMethod)
 	}
 	return resp, err
+}
+
+func loggingUnknownService(_ any, stream grpc.ServerStream) error {
+	fullMethod, ok := grpc.MethodFromServerStream(stream)
+	if !ok {
+		fullMethod = "<unknown>"
+	}
+	log.Printf(">>> %s", fullMethod)
+	err := status.Errorf(codes.Unimplemented, "unknown service or method %s", fullMethod)
+	log.Printf("<<< %s ERROR: %v", fullMethod, err)
+	return err
 }

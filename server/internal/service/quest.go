@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"log"
+	"strconv"
 	"time"
 
 	pb "lunar-tear/server/gen/proto"
 	"lunar-tear/server/internal/mock"
+	"lunar-tear/server/internal/questflow"
 	"lunar-tear/server/internal/store"
 	"lunar-tear/server/internal/userdata"
 
@@ -15,33 +17,112 @@ import (
 
 type QuestServiceServer struct {
 	pb.UnimplementedQuestServiceServer
-	store *store.Store
+	store  *store.Store
+	engine *questflow.Engine
 }
 
-func NewQuestServiceServer(userStore *store.Store) *QuestServiceServer {
-	return &QuestServiceServer{store: userStore}
+func NewQuestServiceServer(userStore *store.Store, engine *questflow.Engine) *QuestServiceServer {
+	if engine == nil {
+		panic("quest flow engine is required")
+	}
+	return &QuestServiceServer{store: userStore, engine: engine}
 }
 
 func buildSelectedQuestDiff(user store.UserState, tableNames []string) map[string]*pb.DiffData {
 	return userdata.BuildDiffFromTables(userdata.SelectTables(userdata.FullClientTableMap(user), tableNames))
 }
 
+func int32String(value int32) string {
+	return strconv.FormatInt(int64(value), 10)
+}
+
+func boolString(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
+}
+
+func logQuestState(prefix string, user store.UserState, descriptor *questflow.SceneDescriptor) {
+	mainQuest := user.MainQuest
+	line := "[QuestService] " + prefix
+	currentQuestID := int32(0)
+	nextQuestID := int32(0)
+	if descriptor != nil {
+		currentQuestID = descriptor.QuestID
+		nextQuestID = descriptor.NextQuestID
+		line += " sceneId=" + int32String(descriptor.SceneID) +
+			" questId=" + int32String(descriptor.QuestID) +
+			" phase=" + descriptor.Phase.String() +
+			" background=" + boolString(descriptor.IsBackgroundQuest) +
+			" nextQuestId=" + int32String(descriptor.NextQuestID)
+	}
+	line += " activeQuestId=" + int32String(mainQuest.ActiveQuestID) +
+		" clearReadyQuestId=" + int32String(mainQuest.ClearReadyQuestID) +
+		" currentSceneId=" + int32String(mainQuest.CurrentQuestSceneID) +
+		" headSceneId=" + int32String(mainQuest.HeadQuestSceneID) +
+		" currentFlowType=" + int32String(mainQuest.CurrentQuestFlowType) +
+		" progressSceneId=" + int32String(mainQuest.ProgressQuestSceneID) +
+		" progressHeadSceneId=" + int32String(mainQuest.ProgressHeadQuestSceneID) +
+		" progressFlowType=" + int32String(mainQuest.ProgressQuestFlowType) +
+		" isReachedLast=" + boolString(mainQuest.IsReachedLastQuestScene)
+	log.Print(line)
+
+	if currentQuestID == 0 {
+		currentQuestID = mainQuest.ActiveQuestID
+	}
+	if currentQuestID == 0 {
+		currentQuestID = mainQuest.ClearReadyQuestID
+	}
+	if currentQuestID != 0 {
+		if quest, ok := user.Quests[currentQuestID]; ok {
+			log.Printf("[QuestService] %s currentQuest questId=%d stateType=%d isBattleOnly=%v latestStart=%d clearCount=%d dailyClearCount=%d lastClear=%d",
+				prefix, quest.QuestID, quest.QuestStateType, quest.IsBattleOnly, quest.LatestStartDatetime, quest.ClearCount, quest.DailyClearCount, quest.LastClearDatetime)
+		} else {
+			log.Printf("[QuestService] %s currentQuest questId=%d missing", prefix, currentQuestID)
+		}
+	}
+	if nextQuestID != 0 {
+		if quest, ok := user.Quests[nextQuestID]; ok {
+			log.Printf("[QuestService] %s nextQuest questId=%d stateType=%d isBattleOnly=%v latestStart=%d clearCount=%d dailyClearCount=%d lastClear=%d",
+				prefix, quest.QuestID, quest.QuestStateType, quest.IsBattleOnly, quest.LatestStartDatetime, quest.ClearCount, quest.DailyClearCount, quest.LastClearDatetime)
+		} else {
+			log.Printf("[QuestService] %s nextQuest questId=%d missing", prefix, nextQuestID)
+		}
+	}
+}
+
+func sceneTransitionDiffTables(descriptor questflow.SceneDescriptor) []string {
+	if descriptor.IsBackgroundQuest {
+		return []string{
+			"IUserMainQuestFlowStatus",
+			"IUserMainQuestMainFlowStatus",
+			"IUserMainQuestProgressStatus",
+			"IUserMainQuestSeasonRoute",
+		}
+	}
+	return []string{
+		"IUserQuest",
+		"IUserQuestMission",
+		"IUserMainQuestFlowStatus",
+		"IUserMainQuestMainFlowStatus",
+		"IUserMainQuestProgressStatus",
+		"IUserMainQuestSeasonRoute",
+	}
+}
+
 func (s *QuestServiceServer) UpdateMainFlowSceneProgress(ctx context.Context, req *pb.UpdateMainFlowSceneProgressRequest) (*pb.UpdateMainFlowSceneProgressResponse, error) {
 	log.Printf("[QuestService] UpdateMainFlowSceneProgress: questSceneId=%d", req.QuestSceneId)
 
 	userID := currentUserID(ctx, s.store)
+	var descriptor questflow.SceneDescriptor
 	user, _ := s.store.UpdateUser(userID, func(user *store.UserState) {
-		user.MainQuest.CurrentQuestFlowType = 1
-		user.MainQuest.CurrentQuestSceneID = req.QuestSceneId
-		user.MainQuest.HeadQuestSceneID = req.QuestSceneId
-		user.MainQuest.IsReachedLastQuestScene = false
-		user.MainQuest.ProgressQuestSceneID = req.QuestSceneId
-		user.MainQuest.ProgressHeadQuestSceneID = req.QuestSceneId
-		user.MainQuest.ProgressQuestFlowType = 1
+		descriptor, _ = s.engine.ApplySceneTransition(user, req.QuestSceneId, questflow.SceneUpdateModeMainFlow, time.Now().UnixMilli())
 	})
+	logQuestState("UpdateMainFlowSceneProgress state", user, &descriptor)
 
 	return &pb.UpdateMainFlowSceneProgressResponse{
-		DiffUserData: buildSelectedQuestDiff(user, mainQuestDiffTables),
+		DiffUserData: buildSelectedQuestDiff(user, sceneTransitionDiffTables(descriptor)),
 	}, nil
 }
 
@@ -55,27 +136,15 @@ func (s *QuestServiceServer) UpdateReplayFlowSceneProgress(ctx context.Context, 
 func (s *QuestServiceServer) UpdateMainQuestSceneProgress(ctx context.Context, req *pb.UpdateMainQuestSceneProgressRequest) (*pb.UpdateMainQuestSceneProgressResponse, error) {
 	log.Printf("[QuestService] UpdateMainQuestSceneProgress: questSceneId=%d", req.QuestSceneId)
 
-	isRunning := req.QuestSceneId < 3
 	userID := currentUserID(ctx, s.store)
+	var descriptor questflow.SceneDescriptor
 	user, _ := s.store.UpdateUser(userID, func(user *store.UserState) {
-		user.MainQuest.CurrentQuestSceneID = req.QuestSceneId
-		user.MainQuest.HeadQuestSceneID = req.QuestSceneId
-		user.MainQuest.IsReachedLastQuestScene = !isRunning
-		if isRunning {
-			user.MainQuest.CurrentQuestFlowType = 1
-			user.MainQuest.ProgressQuestSceneID = req.QuestSceneId
-			user.MainQuest.ProgressHeadQuestSceneID = req.QuestSceneId
-			user.MainQuest.ProgressQuestFlowType = 1
-			return
-		}
-		user.MainQuest.CurrentQuestFlowType = 0
-		user.MainQuest.ProgressQuestSceneID = 0
-		user.MainQuest.ProgressHeadQuestSceneID = 0
-		user.MainQuest.ProgressQuestFlowType = 0
+		descriptor, _ = s.engine.ApplySceneTransition(user, req.QuestSceneId, questflow.SceneUpdateModeQuestProgress, time.Now().UnixMilli())
 	})
+	logQuestState("UpdateMainQuestSceneProgress state", user, &descriptor)
 
 	return &pb.UpdateMainQuestSceneProgressResponse{
-		DiffUserData: buildSelectedQuestDiff(user, mainQuestDiffTables),
+		DiffUserData: buildSelectedQuestDiff(user, sceneTransitionDiffTables(descriptor)),
 	}, nil
 }
 
@@ -86,17 +155,13 @@ func (s *QuestServiceServer) StartMainQuest(ctx context.Context, req *pb.StartMa
 	nowMillis := time.Now().UnixMilli()
 	userID := currentUserID(ctx, s.store)
 	user, _ := s.store.UpdateUser(userID, func(user *store.UserState) {
-		quest := user.Quests[req.QuestId]
-		quest.QuestID = req.QuestId
-		quest.QuestStateType = 1
-		quest.IsBattleOnly = req.IsBattleOnly
-		quest.LatestStartDatetime = nowMillis
-		user.Quests[req.QuestId] = quest
+		s.engine.ApplyQuestStart(user, req.QuestId, req.IsBattleOnly, nowMillis)
 	})
+	logQuestState("StartMainQuest state", user, nil)
 
 	return &pb.StartMainQuestResponse{
 		BattleDropReward: []*pb.BattleDropReward{},
-		DiffUserData:     buildSelectedQuestDiff(user, []string{"IUserQuest"}),
+		DiffUserData:     buildSelectedQuestDiff(user, []string{"IUserQuest", "IUserQuestMission"}),
 	}, nil
 }
 
@@ -107,33 +172,18 @@ func (s *QuestServiceServer) FinishMainQuest(ctx context.Context, req *pb.Finish
 	nowMillis := time.Now().UnixMilli()
 	userID := currentUserID(ctx, s.store)
 	user, _ := s.store.UpdateUser(userID, func(user *store.UserState) {
-		quest := user.Quests[req.QuestId]
-		quest.QuestID = req.QuestId
-		quest.QuestStateType = 2
-		quest.IsBattleOnly = false
-		if quest.LatestStartDatetime == 0 {
-			quest.LatestStartDatetime = nowMillis
-		}
-		quest.ClearCount++
-		quest.DailyClearCount++
-		quest.LastClearDatetime = nowMillis
-		quest.ShortestClearFrames = 600
-		user.Quests[req.QuestId] = quest
-
-		// Preserve the latest scene pointer established by scene-progress RPCs.
-		// FinishMainQuest should only clear the active "running quest" markers.
-		user.MainQuest.CurrentQuestFlowType = 0
-		user.MainQuest.ProgressQuestSceneID = 0
-		user.MainQuest.ProgressHeadQuestSceneID = 0
-		user.MainQuest.ProgressQuestFlowType = 0
+		s.engine.ApplyQuestFinish(user, req.QuestId, req.IsMainFlow, nowMillis)
 	})
+	logQuestState("FinishMainQuest state", user, nil)
 
 	return &pb.FinishMainQuestResponse{
 		DiffUserData: buildSelectedQuestDiff(user, []string{
 			"IUserQuest",
+			"IUserQuestMission",
 			"IUserMainQuestFlowStatus",
 			"IUserMainQuestMainFlowStatus",
 			"IUserMainQuestProgressStatus",
+			"IUserMainQuestSeasonRoute",
 		}),
 	}, nil
 }

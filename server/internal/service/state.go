@@ -22,6 +22,7 @@ var startedGameStartTables = []string{
 	"IUserMainQuestProgressStatus",
 	"IUserMainQuestSeasonRoute",
 	"IUserQuest",
+	"IUserQuestMission",
 	"IUserTutorialProgress",
 }
 

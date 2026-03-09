@@ -16,7 +16,6 @@ const (
 	starterCostumeID          = int32(1)
 	starterWeaponID           = int32(1)
 	starterCompanionID        = int32(1)
-	starterQuestID            = int32(1)
 	starterMissionID          = int32(1)
 	starterMainQuestRouteID   = int32(1)
 	starterMainQuestSeasonID  = int32(1)
@@ -42,15 +41,39 @@ const (
 
 type Clock func() time.Time
 
+type BootstrapProfile string
+
+const (
+	BootstrapProfileFresh           BootstrapProfile = "fresh"
+	BootstrapProfileMainQuestScene9 BootstrapProfile = "main-quest-scene-9"
+)
+
+type Option func(*Store)
+
+type Bootstrapper interface {
+	ApplyBootstrap(user *UserState, profile BootstrapProfile, nowMillis int64)
+}
+
 type Store struct {
-	mu              sync.RWMutex
-	clock           Clock
-	nextUserID      int64
-	users           map[int64]*UserState
-	userIDsByUUID   map[string]int64
-	sessionToUserID map[string]int64
-	sessions        map[string]SessionState
-	gachaCatalog    map[int32]GachaCatalogEntry
+	mu               sync.RWMutex
+	clock            Clock
+	bootstrapProfile BootstrapProfile
+	bootstrapper     Bootstrapper
+	nextUserID       int64
+	users            map[int64]*UserState
+	userIDsByUUID    map[string]int64
+	sessionToUserID  map[string]int64
+	sessions         map[string]SessionState
+	gachaCatalog     map[int32]GachaCatalogEntry
+}
+
+func WithBootstrap(profile BootstrapProfile, bootstrapper Bootstrapper) Option {
+	return func(s *Store) {
+		if profile != "" {
+			s.bootstrapProfile = profile
+		}
+		s.bootstrapper = bootstrapper
+	}
 }
 
 type SessionState struct {
@@ -96,6 +119,7 @@ type UserState struct {
 	DeckCharacters map[string]DeckCharacterState
 	Decks          map[DeckKey]DeckState
 	Quests         map[int32]UserQuestState
+	QuestMissions  map[QuestMissionKey]UserQuestMissionState
 	Missions       map[int32]UserMissionState
 	Gimmick        GimmickState
 }
@@ -218,6 +242,8 @@ type TutorialProgressState struct {
 }
 
 type MainQuestState struct {
+	ActiveQuestID            int32
+	ClearReadyQuestID        int32
 	CurrentQuestFlowType     int32
 	CurrentMainQuestRouteID  int32
 	CurrentQuestSceneID      int32
@@ -251,6 +277,20 @@ type UserQuestState struct {
 	DailyClearCount     int32
 	LastClearDatetime   int64
 	ShortestClearFrames int32
+	LatestVersion       int64
+}
+
+type QuestMissionKey struct {
+	QuestID        int32
+	QuestMissionID int32
+}
+
+type UserQuestMissionState struct {
+	QuestID             int32
+	QuestMissionID      int32
+	ProgressValue       int32
+	IsClear             bool
+	LatestClearDatetime int64
 	LatestVersion       int64
 }
 
@@ -384,20 +424,25 @@ type GachaCatalogEntry struct {
 	GachaMode                  []byte
 }
 
-func New(clock Clock) *Store {
+func New(clock Clock, options ...Option) *Store {
 	if clock == nil {
 		clock = time.Now
 	}
 
-	return &Store{
-		clock:           clock,
-		nextUserID:      defaultUserID,
-		users:           make(map[int64]*UserState),
-		userIDsByUUID:   make(map[string]int64),
-		sessionToUserID: make(map[string]int64),
-		sessions:        make(map[string]SessionState),
-		gachaCatalog:    make(map[int32]GachaCatalogEntry),
+	store := &Store{
+		clock:            clock,
+		bootstrapProfile: BootstrapProfileFresh,
+		nextUserID:       defaultUserID,
+		users:            make(map[int64]*UserState),
+		userIDsByUUID:    make(map[string]int64),
+		sessionToUserID:  make(map[string]int64),
+		sessions:         make(map[string]SessionState),
+		gachaCatalog:     make(map[int32]GachaCatalogEntry),
 	}
+	for _, option := range options {
+		option(store)
+	}
+	return store
 }
 
 func (s *Store) EnsureUser(uuid string) UserState {
@@ -514,14 +559,14 @@ func (s *Store) getOrCreateLocked(uuid string) *UserState {
 	userID := s.nextUserID
 	s.nextUserID++
 
-	user := seedUserState(userID, uuid, s.clock().UnixMilli())
+	user := seedUserState(userID, uuid, s.clock().UnixMilli(), s.bootstrapProfile, s.bootstrapper)
 	s.users[userID] = user
 	s.userIDsByUUID[uuid] = userID
 	return user
 }
 
-func seedUserState(userID int64, uuid string, nowMillis int64) *UserState {
-	return &UserState{
+func seedUserState(userID int64, uuid string, nowMillis int64, profile BootstrapProfile, bootstrapper Bootstrapper) *UserState {
+	user := &UserState{
 		UserID:               userID,
 		UUID:                 uuid,
 		PlayerID:             userID,
@@ -700,19 +745,8 @@ func seedUserState(userID int64, uuid string, nowMillis int64) *UserState {
 				LatestVersion:           0,
 			},
 		},
-		Quests: map[int32]UserQuestState{
-			starterQuestID: {
-				QuestID:             starterQuestID,
-				QuestStateType:      0,
-				IsBattleOnly:        false,
-				LatestStartDatetime: nowMillis,
-				ClearCount:          0,
-				DailyClearCount:     0,
-				LastClearDatetime:   0,
-				ShortestClearFrames: 0,
-				LatestVersion:       0,
-			},
-		},
+		Quests:        map[int32]UserQuestState{},
+		QuestMissions: map[QuestMissionKey]UserQuestMissionState{},
 		Missions: map[int32]UserMissionState{
 			starterMissionID: {
 				MissionID:                 starterMissionID,
@@ -730,6 +764,10 @@ func seedUserState(userID int64, uuid string, nowMillis int64) *UserState {
 			Unlocks:          make(map[GimmickKey]GimmickUnlockState),
 		},
 	}
+	if bootstrapper != nil {
+		bootstrapper.ApplyBootstrap(user, profile, nowMillis)
+	}
+	return user
 }
 
 func (u UserState) clone() UserState {
@@ -741,6 +779,7 @@ func (u UserState) clone() UserState {
 	out.DeckCharacters = maps.Clone(u.DeckCharacters)
 	out.Decks = maps.Clone(u.Decks)
 	out.Quests = maps.Clone(u.Quests)
+	out.QuestMissions = maps.Clone(u.QuestMissions)
 	out.Missions = maps.Clone(u.Missions)
 	out.Gimmick = GimmickState{
 		Progress:         maps.Clone(u.Gimmick.Progress),
