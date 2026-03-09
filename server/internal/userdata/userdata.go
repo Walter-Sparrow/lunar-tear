@@ -317,6 +317,7 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		starterQuestID     = int32(1)
 		starterMissionID   = int32(1)
 		questDeckType      = int32(1)
+		mainQuestRouteID   = int32(1)
 		missionInProgress  = int32(1)
 	)
 	const (
@@ -342,28 +343,29 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 	})
 	mainQuestFlowJSON, _ := encodeJSONMaps(map[string]any{
 		"userId":               userID,
-		"currentQuestFlowType": 1,
+		// Keep route progression seeded, but do not advertise an in-progress main quest.
+		"currentQuestFlowType": 0,
 		"latestVersion":        0,
 	})
 	mainQuestMainFlowJSON, _ := encodeJSONMaps(map[string]any{
 		"userId":                  userID,
-		"currentMainQuestRouteId": 1,
-		"currentQuestSceneId":     1,
-		"headQuestSceneId":        1,
+		"currentMainQuestRouteId": mainQuestRouteID,
+		"currentQuestSceneId":     0,
+		"headQuestSceneId":        0,
 		"isReachedLastQuestScene": false,
 		"latestVersion":           0,
 	})
 	mainQuestProgressJSON, _ := encodeJSONMaps(map[string]any{
 		"userId":               userID,
-		"currentQuestSceneId":  1,
-		"headQuestSceneId":     1,
-		"currentQuestFlowType": 1,
+		"currentQuestSceneId":  0,
+		"headQuestSceneId":     0,
+		"currentQuestFlowType": 0,
 		"latestVersion":        0,
 	})
 	mainQuestSeasonRouteJSON, _ := encodeJSONMaps(map[string]any{
 		"userId":            userID,
 		"mainQuestSeasonId": 1,
-		"mainQuestRouteId":  1,
+		"mainQuestRouteId":  mainQuestRouteID,
 		"latestVersion":     0,
 	})
 	userStatusJSON, _ := encodeJSONMaps(map[string]any{
