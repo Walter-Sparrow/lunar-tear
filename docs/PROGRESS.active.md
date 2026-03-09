@@ -35,6 +35,7 @@ Reach the first playable/home flow with minimal client patching and a server-fir
 - The gameplay proto and Go server registration have now been corrected to `GamePlayService`.
 - The active-mission interruption dialog after `CheckBeforeGamePlay` was caused by seeded running-main-quest state in `GameStart`.
 - Clearing the initial `IUserMainQuestProgressStatus` / `IUserMainQuestFlowStatus` running-state fields removed that dialog and allowed natural main-story startup to continue.
+- `GimmickService` is now implemented server-side well enough for `InitSequenceScheduleAsync` to return `OK`.
 
 ## What Was Proven About `GameStart`
 - The old immediate `GameStart` crash was inside `UserDiffUpdateInterceptor` while applying `DiffUserData`.
@@ -103,6 +104,11 @@ Reach the first playable/home flow with minimal client patching and a server-fir
   - `IUserMainQuestMainFlowStatus`
   - `IUserMainQuestProgressStatus`
 - `QuestService.StartMainQuest()` now sends lower-camel `IUserQuest` with unix-millis `latestStartDatetime` and explicit `DeleteKeysJson = "[]"`.
+- `GimmickService` is now registered and currently stubs:
+  - `InitSequenceSchedule`
+  - `UpdateSequence`
+  - `UpdateGimmickProgress`
+  - `Unlock`
 
 ## Current Boundary
 `GameStart` diff application is no longer the blocker.
@@ -124,13 +130,22 @@ What is now proven:
   - `QuestService/StartMainQuest`
   - `NotificationService/GetHeaderNotification`
   - `QuestService/UpdateMainQuestSceneProgress`
-- The next confirmed blocker is:
-  - `GimmickService/InitSequenceScheduleAsync`
-  - server reply: `Unimplemented`
-  - detail: `unknown service apb.api.gimmick.GimmickService`
+  - `GimmickService/InitSequenceSchedule`
+- The previous `GimmickService/InitSequenceScheduleAsync` `Unimplemented` blocker is resolved.
+- Current observed runtime behavior:
+  - the client reaches mission startup and later gimmick initialization without transport or service-name failure
+  - the camera then repeats the same intro animation instead of advancing normally
+  - server logs show repeated quest-scene progress updates rather than a clean one-way transition
+  - observed sequence:
+    - `UpdateMainFlowSceneProgress(questSceneId=2)`
+    - `StartMainQuest(questId=1)`
+    - `GetHeaderNotification`
+    - `UpdateMainQuestSceneProgress(questSceneId=2)`
+    - later `UpdateMainQuestSceneProgress(questSceneId=3)`
+    - `GimmickService/InitSequenceSchedule`
 
 ## Current Concern
-The active blocker is no longer JSON shape, diff application, request-body transport, `CheckBeforeGamePlay`, or the initial main-quest startup RPCs.
+The active blocker is no longer JSON shape, diff application, request-body transport, `CheckBeforeGamePlay`, the initial main-quest startup RPCs, or missing `GimmickService`.
 
 The prior uncertainty about `CheckBeforeGamePlay` transport has been resolved:
 - the client did serialize the body
@@ -140,12 +155,14 @@ The prior uncertainty about `CheckBeforeGamePlay` transport has been resolved:
 The current trusted boundary is later:
 - the client now enters the mission start sequence naturally
 - quest-start progress diffs are being consumed far enough to reach later outgame/gameplay initialization
-- the next hard blocker is a missing `GimmickService`
+- `GimmickService/InitSequenceSchedule` now returns `OK`
+- the current failure mode is a gameplay loop / re-entry loop rather than an immediate missing-service abort
 
 Working hypothesis:
 - The currently trusted 14-table `GameStart` diff is sufficient to get through diff application and title completion.
-- With `GamePlayService` and the early quest-state diffs corrected, the remaining blocker is now missing server implementation for the next post-quest initialization service call.
-- The next investigation should focus on `apb.api.gimmick.GimmickService`, starting with `InitSequenceScheduleAsync`, rather than revisiting `GameStart` starter rows.
+- With `GamePlayService`, early quest-state diffs, and `GimmickService` corrected, the remaining blocker is now a state/progression loop after mission startup.
+- The likely issue is no longer "missing next service", but inconsistent server-side quest/gimmick/world-state updates causing the client to re-enter the same intro/gameplay startup path.
+- The next investigation should focus on what state must change after `UpdateMainQuestSceneProgress` / gimmick init so the client stops replaying the intro camera sequence.
 
 ## Active Instrumentation
 Primary scripts:
@@ -160,6 +177,7 @@ Current useful probes:
 - `QuestService/StartMainQuestAsync`
 - `QuestService/UpdateMainQuestSceneProgressAsync`
 - late post-quest service dispatches (now including `GimmickService/InitSequenceScheduleAsync`)
+- repeated quest-scene progress updates and gameplay re-entry behavior
 - `RequestContext..ctor`
 - `ErrorHandlingInterceptor.SendAsync`
 - `ErrorHandlingInterceptor.ErrorHandling`
@@ -198,15 +216,16 @@ Most relevant symbols / areas:
 - `IQuestService.StartMainQuestAsync`
 - `IQuestService.UpdateMainQuestSceneProgressAsync`
 - `IGimmickService.InitSequenceScheduleAsync`
+- gameplay/world-state transition after gimmick init
 - `RequestContext..ctor`
 - `ErrorHandlingInterceptor.SendAsync`
 - `ErrorHandlingInterceptor.ErrorHandling`
 - `ResponseContext<T>.WaitResponseAsync`
 
 ## Immediate Next Step
-Implement or stub `apb.api.gimmick.GimmickService`, starting with `InitSequenceScheduleAsync`.
+Investigate the post-quest gameplay loop after `UpdateMainQuestSceneProgress` and `GimmickService/InitSequenceSchedule`.
 
 Goal of that step:
-- satisfy the next missing service after natural quest startup
-- determine whether the client proceeds past `GimmickService/InitSequenceScheduleAsync`
-- identify the next real blocker after gimmick initialization if one remains
+- determine why the client replays the intro camera / startup sequence instead of progressing
+- identify which world-state, quest-state, or gimmick-state update is still missing or inconsistent
+- establish the next concrete RPC or table transition needed to break the loop
