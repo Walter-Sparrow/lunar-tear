@@ -21,15 +21,13 @@ func NewQuestServiceServer() *QuestServiceServer {
 	return &QuestServiceServer{}
 }
 
-func (s *QuestServiceServer) UpdateMainFlowSceneProgress(ctx context.Context, req *pb.UpdateMainFlowSceneProgressRequest) (*pb.UpdateMainFlowSceneProgressResponse, error) {
-	log.Printf("[QuestService] UpdateMainFlowSceneProgress: questSceneId=%d", req.QuestSceneId)
-
+func buildMainQuestSceneProgressDiff(sceneID int32) (map[string]*pb.DiffData, string, string, string) {
 	mainFlowJSON, _ := json.Marshal([]map[string]any{
 		{
 			"userId":                  mock.DefaultUserID,
 			"currentMainQuestRouteId": 1,
-			"currentQuestSceneId":     req.QuestSceneId,
-			"headQuestSceneId":        req.QuestSceneId,
+			"currentQuestSceneId":     sceneID,
+			"headQuestSceneId":        sceneID,
 			"isReachedLastQuestScene": false,
 			"latestVersion":           0,
 		},
@@ -37,8 +35,8 @@ func (s *QuestServiceServer) UpdateMainFlowSceneProgress(ctx context.Context, re
 	progressJSON, _ := json.Marshal([]map[string]any{
 		{
 			"userId":               mock.DefaultUserID,
-			"currentQuestSceneId":  req.QuestSceneId,
-			"headQuestSceneId":     req.QuestSceneId,
+			"currentQuestSceneId":  sceneID,
+			"headQuestSceneId":     sceneID,
 			"currentQuestFlowType": 1,
 			"latestVersion":        0,
 		},
@@ -66,9 +64,17 @@ func (s *QuestServiceServer) UpdateMainFlowSceneProgress(ctx context.Context, re
 		},
 	}
 
+	return diff, string(flowJSON), string(mainFlowJSON), string(progressJSON)
+}
+
+func (s *QuestServiceServer) UpdateMainFlowSceneProgress(ctx context.Context, req *pb.UpdateMainFlowSceneProgressRequest) (*pb.UpdateMainFlowSceneProgressResponse, error) {
+	log.Printf("[QuestService] UpdateMainFlowSceneProgress: questSceneId=%d", req.QuestSceneId)
+
+	diff, flowJSON, mainFlowJSON, progressJSON := buildMainQuestSceneProgressDiff(req.QuestSceneId)
+
 	log.Printf(
 		"[QuestService] UpdateMainFlowSceneProgress diff: IUserMainQuestFlowStatus=%s IUserMainQuestMainFlowStatus=%s IUserMainQuestProgressStatus=%s",
-		string(flowJSON), string(mainFlowJSON), string(progressJSON),
+		flowJSON, mainFlowJSON, progressJSON,
 	)
 
 	return &pb.UpdateMainFlowSceneProgressResponse{
@@ -85,8 +91,15 @@ func (s *QuestServiceServer) UpdateReplayFlowSceneProgress(ctx context.Context, 
 
 func (s *QuestServiceServer) UpdateMainQuestSceneProgress(ctx context.Context, req *pb.UpdateMainQuestSceneProgressRequest) (*pb.UpdateMainQuestSceneProgressResponse, error) {
 	log.Printf("[QuestService] UpdateMainQuestSceneProgress: questSceneId=%d", req.QuestSceneId)
+
+	diff, flowJSON, mainFlowJSON, progressJSON := buildMainQuestSceneProgressDiff(req.QuestSceneId)
+	log.Printf(
+		"[QuestService] UpdateMainQuestSceneProgress diff: IUserMainQuestFlowStatus=%s IUserMainQuestMainFlowStatus=%s IUserMainQuestProgressStatus=%s",
+		flowJSON, mainFlowJSON, progressJSON,
+	)
+
 	return &pb.UpdateMainQuestSceneProgressResponse{
-		DiffUserData: mock.EmptyDiff(),
+		DiffUserData: diff,
 	}, nil
 }
 
