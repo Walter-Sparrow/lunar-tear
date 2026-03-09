@@ -130,22 +130,25 @@ What is now proven:
   - `QuestService/StartMainQuest`
   - `NotificationService/GetHeaderNotification`
   - `QuestService/UpdateMainQuestSceneProgress`
+  - `QuestService/FinishMainQuest`
+  - follow-up `QuestService/UpdateMainQuestSceneProgress`
   - `GimmickService/InitSequenceSchedule`
 - The previous `GimmickService/InitSequenceScheduleAsync` `Unimplemented` blocker is resolved.
 - Current observed runtime behavior:
-  - the client reaches mission startup and later gimmick initialization without transport or service-name failure
-  - the camera then repeats the same intro animation instead of advancing normally
-  - server logs show repeated quest-scene progress updates rather than a clean one-way transition
+  - the client reaches mission startup, quest completion, and later gimmick initialization without transport or service-name failure
+  - the latest boundary is no longer the earlier intro-camera replay loop
+  - the client now reaches `FinishMainQuest`, applies the follow-up scene-progress update, then ends up on a black screen with music
   - observed sequence:
     - `UpdateMainFlowSceneProgress(questSceneId=2)`
     - `StartMainQuest(questId=1)`
     - `GetHeaderNotification`
     - `UpdateMainQuestSceneProgress(questSceneId=2)`
-    - later `UpdateMainQuestSceneProgress(questSceneId=3)`
+    - `FinishMainQuest(questId=1, storySkipType=3)`
+    - immediate `UpdateMainQuestSceneProgress(questSceneId=3)`
     - `GimmickService/InitSequenceSchedule`
 
 ## Current Concern
-The active blocker is no longer JSON shape, diff application, request-body transport, `CheckBeforeGamePlay`, the initial main-quest startup RPCs, or missing `GimmickService`.
+The active blocker is no longer JSON shape, diff application, request-body transport, `CheckBeforeGamePlay`, the initial main-quest startup RPCs, missing `GimmickService`, or the old early gameplay re-entry loop.
 
 The prior uncertainty about `CheckBeforeGamePlay` transport has been resolved:
 - the client did serialize the body
@@ -156,13 +159,15 @@ The current trusted boundary is later:
 - the client now enters the mission start sequence naturally
 - quest-start progress diffs are being consumed far enough to reach later outgame/gameplay initialization
 - `GimmickService/InitSequenceSchedule` now returns `OK`
-- the current failure mode is a gameplay loop / re-entry loop rather than an immediate missing-service abort
+- `FinishMainQuest` now returns `OK`
+- the post-finish scene-progress update also returns `OK`
+- the current failure mode is now a black screen with music after quest completion, rather than an immediate missing-service abort
 
 Working hypothesis:
 - The currently trusted 14-table `GameStart` diff is sufficient to get through diff application and title completion.
-- With `GamePlayService`, early quest-state diffs, and `GimmickService` corrected, the remaining blocker is now a state/progression loop after mission startup.
-- The likely issue is no longer "missing next service", but inconsistent server-side quest/gimmick/world-state updates causing the client to re-enter the same intro/gameplay startup path.
-- The next investigation should focus on what state must change after `UpdateMainQuestSceneProgress` / gimmick init so the client stops replaying the intro camera sequence.
+- With `GamePlayService`, early quest-state diffs, `GimmickService`, and `FinishMainQuest` corrected, the remaining blocker is now a later post-quest state/progression handoff.
+- The likely issue is no longer "missing next service", but inconsistent server-side quest/world-state after quest completion, especially around the transition immediately after `FinishMainQuest` and the scene-progress update to scene `3`.
+- The next investigation should focus on what state must change after `FinishMainQuest` / `UpdateMainQuestSceneProgress(3)` so the client leaves the black-screen state and proceeds into the intended outgame flow.
 
 ## Active Instrumentation
 Primary scripts:
@@ -176,8 +181,9 @@ Current useful probes:
 - `QuestService/UpdateMainFlowSceneProgressAsync`
 - `QuestService/StartMainQuestAsync`
 - `QuestService/UpdateMainQuestSceneProgressAsync`
+- `QuestService/FinishMainQuestAsync`
 - late post-quest service dispatches (now including `GimmickService/InitSequenceScheduleAsync`)
-- repeated quest-scene progress updates and gameplay re-entry behavior
+- post-quest black-screen handoff behavior
 - `RequestContext..ctor`
 - `ErrorHandlingInterceptor.SendAsync`
 - `ErrorHandlingInterceptor.ErrorHandling`
@@ -215,17 +221,18 @@ Most relevant symbols / areas:
 - `IQuestService.UpdateMainFlowSceneProgressAsync`
 - `IQuestService.StartMainQuestAsync`
 - `IQuestService.UpdateMainQuestSceneProgressAsync`
+- `IQuestService.FinishMainQuestAsync`
 - `IGimmickService.InitSequenceScheduleAsync`
-- gameplay/world-state transition after gimmick init
+- gameplay/world-state transition after `FinishMainQuest` and scene `3` progress
 - `RequestContext..ctor`
 - `ErrorHandlingInterceptor.SendAsync`
 - `ErrorHandlingInterceptor.ErrorHandling`
 - `ResponseContext<T>.WaitResponseAsync`
 
 ## Immediate Next Step
-Investigate the post-quest gameplay loop after `UpdateMainQuestSceneProgress` and `GimmickService/InitSequenceSchedule`.
+Investigate the post-quest black-screen handoff after `FinishMainQuest` and `UpdateMainQuestSceneProgress(questSceneId=3)`.
 
 Goal of that step:
-- determine why the client replays the intro camera / startup sequence instead of progressing
-- identify which world-state, quest-state, or gimmick-state update is still missing or inconsistent
-- establish the next concrete RPC or table transition needed to break the loop
+- determine what state transition is still missing after quest completion
+- identify whether `FinishMainQuest` or the follow-up scene-progress update should clear or advance additional quest/world state
+- establish the next concrete RPC or table transition needed to leave the black screen
