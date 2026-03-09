@@ -192,6 +192,76 @@ func TestGachaServiceReadsStoreBackedCatalogAndRewardState(t *testing.T) {
 	}
 }
 
+func TestGiftServiceUsesStoreBackedDefaultGift(t *testing.T) {
+	userStore := store.New(func() time.Time {
+		return time.Unix(1_700_000_000, 0)
+	})
+	userService := NewUserServiceServer(userStore)
+	giftService := NewGiftServiceServer(userStore)
+	notificationService := NewNotificationServiceServer(userStore)
+
+	authResp, err := userService.Auth(context.Background(), &pb.AuthUserRequest{
+		Uuid:      "user-5",
+		Signature: "sig",
+	})
+	if err != nil {
+		t.Fatalf("Auth returned error: %v", err)
+	}
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-session-key", authResp.SessionKey))
+	listResp, err := giftService.GetGiftList(ctx, &pb.GetGiftListRequest{GetCount: 10})
+	if err != nil {
+		t.Fatalf("GetGiftList returned error: %v", err)
+	}
+	if len(listResp.Gift) != 1 {
+		t.Fatalf("GetGiftList gift count = %d, want 1 default gift", len(listResp.Gift))
+	}
+	defaultGiftUUID := listResp.Gift[0].UserGiftUuid
+	if defaultGiftUUID == "" {
+		t.Fatal("default gift UUID should not be empty")
+	}
+
+	headerResp, err := notificationService.GetHeaderNotification(ctx, &emptypb.Empty{})
+	if err != nil {
+		t.Fatalf("GetHeaderNotification returned error: %v", err)
+	}
+	if headerResp.GiftNotReceiveCount != 1 {
+		t.Fatalf("GiftNotReceiveCount = %d, want 1", headerResp.GiftNotReceiveCount)
+	}
+
+	receiveResp, err := giftService.ReceiveGift(ctx, &pb.ReceiveGiftRequest{UserGiftUuid: []string{defaultGiftUUID}})
+	if err != nil {
+		t.Fatalf("ReceiveGift returned error: %v", err)
+	}
+	if len(receiveResp.ReceivedGiftUuid) != 1 || receiveResp.ReceivedGiftUuid[0] != defaultGiftUUID {
+		t.Fatalf("ReceiveGift received UUIDs = %+v, want [%s]", receiveResp.ReceivedGiftUuid, defaultGiftUUID)
+	}
+
+	listResp, err = giftService.GetGiftList(ctx, &pb.GetGiftListRequest{GetCount: 10})
+	if err != nil {
+		t.Fatalf("GetGiftList after receive returned error: %v", err)
+	}
+	if len(listResp.Gift) != 0 {
+		t.Fatalf("GetGiftList after receive gift count = %d, want 0", len(listResp.Gift))
+	}
+
+	historyResp, err := giftService.GetGiftReceiveHistoryList(ctx, &emptypb.Empty{})
+	if err != nil {
+		t.Fatalf("GetGiftReceiveHistoryList returned error: %v", err)
+	}
+	if len(historyResp.Gift) != 1 {
+		t.Fatalf("GetGiftReceiveHistoryList gift count = %d, want 1", len(historyResp.Gift))
+	}
+
+	headerResp, err = notificationService.GetHeaderNotification(ctx, &emptypb.Empty{})
+	if err != nil {
+		t.Fatalf("GetHeaderNotification after receive returned error: %v", err)
+	}
+	if headerResp.GiftNotReceiveCount != 0 {
+		t.Fatalf("GiftNotReceiveCount after receive = %d, want 0", headerResp.GiftNotReceiveCount)
+	}
+}
+
 func contains(s, want string) bool {
 	return len(s) >= len(want) && (s == want || contextContains(s, want))
 }

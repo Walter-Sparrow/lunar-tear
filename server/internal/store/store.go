@@ -12,21 +12,24 @@ const (
 	defaultUUID   = "default-user"
 	defaultUserID = int64(1001)
 
-	starterCharacterID       = int32(1)
-	starterCostumeID         = int32(1)
-	starterWeaponID          = int32(1)
-	starterCompanionID       = int32(1)
-	starterQuestID           = int32(1)
-	starterMissionID         = int32(1)
-	starterMainQuestRouteID  = int32(1)
-	starterMainQuestSeasonID = int32(1)
-	starterQuestDeckType     = int32(1)
-	missionInProgress        = int32(1)
+	starterCharacterID        = int32(1)
+	starterCostumeID          = int32(1)
+	starterWeaponID           = int32(1)
+	starterCompanionID        = int32(1)
+	starterQuestID            = int32(1)
+	starterMissionID          = int32(1)
+	starterMainQuestRouteID   = int32(1)
+	starterMainQuestSeasonID  = int32(1)
+	starterQuestDeckType      = int32(1)
+	missionInProgress         = int32(1)
+	defaultGiftPossessionType = int32(12) // FREE_GEM
+	defaultGiftCount          = int32(300)
 
 	starterCostumeUUID       = "starter-costume-0001"
 	starterWeaponUUID        = "starter-weapon-0001"
 	starterCompanionUUID     = "starter-companion-0001"
 	starterDeckCharacterUUID = "starter-deck-character-0001"
+	defaultGiftUUIDPrefix    = "default-gift"
 
 	defaultRegisteredName = "Un-regist User Name"
 	startedProfileName    = "Lunar Tear"
@@ -81,6 +84,7 @@ type UserState struct {
 	LoginBonus    UserLoginBonusState
 	Tutorial      TutorialProgressState
 	MainQuest     MainQuestState
+	Gifts         GiftState
 	Gacha         GachaState
 	Notifications NotificationState
 
@@ -302,6 +306,31 @@ type NotificationState struct {
 	GiftNotReceiveCount       int32
 	FriendRequestReceiveCount int32
 	IsExistUnreadInformation  bool
+}
+
+type GiftState struct {
+	NotReceived []NotReceivedGiftState
+	Received    []ReceivedGiftState
+}
+
+type GiftCommonState struct {
+	PossessionType        int32
+	PossessionID          int32
+	Count                 int32
+	GrantDatetime         int64
+	DescriptionGiftTextID int32
+	EquipmentData         []byte
+}
+
+type NotReceivedGiftState struct {
+	GiftCommon         GiftCommonState
+	ExpirationDatetime int64
+	UserGiftUUID       string
+}
+
+type ReceivedGiftState struct {
+	GiftCommon       GiftCommonState
+	ReceivedDatetime int64
 }
 
 type GachaState struct {
@@ -538,6 +567,23 @@ func seedUserState(userID int64, uuid string, nowMillis int64) *UserState {
 			ChoiceID:      0,
 			LatestVersion: 0,
 		},
+		Gifts: GiftState{
+			NotReceived: []NotReceivedGiftState{
+				{
+					GiftCommon: GiftCommonState{
+						PossessionType:        defaultGiftPossessionType,
+						PossessionID:          0,
+						Count:                 defaultGiftCount,
+						GrantDatetime:         nowMillis,
+						DescriptionGiftTextID: 0,
+						EquipmentData:         nil,
+					},
+					ExpirationDatetime: nowMillis + int64((7*24*time.Hour)/time.Millisecond),
+					UserGiftUUID:       fmt.Sprintf("%s-%d-1", defaultGiftUUIDPrefix, userID),
+				},
+			},
+			Received: []ReceivedGiftState{},
+		},
 		Gacha: GachaState{
 			RewardAvailable:        false,
 			TodaysCurrentDrawCount: 0,
@@ -559,7 +605,11 @@ func seedUserState(userID int64, uuid string, nowMillis int64) *UserState {
 			MainQuestSeasonID:        starterMainQuestSeasonID,
 			LatestVersion:            0,
 		},
-		Notifications: NotificationState{},
+		Notifications: NotificationState{
+			GiftNotReceiveCount:       1,
+			FriendRequestReceiveCount: 0,
+			IsExistUnreadInformation:  false,
+		},
 		Characters: map[int32]CharacterState{
 			starterCharacterID: {
 				CharacterID:   starterCharacterID,
@@ -683,6 +733,10 @@ func (u UserState) clone() UserState {
 			ObtainPossession:         cloneConsumableItemPtr(u.Gacha.ConvertedGachaMedal.ObtainPossession),
 		},
 	}
+	out.Gifts = GiftState{
+		NotReceived: cloneNotReceivedGifts(u.Gifts.NotReceived),
+		Received:    cloneReceivedGifts(u.Gifts.Received),
+	}
 	return out
 }
 
@@ -698,4 +752,41 @@ func cloneConsumableItemPtr(item *ConsumableItemState) *ConsumableItemState {
 	}
 	out := *item
 	return &out
+}
+
+func cloneNotReceivedGifts(gifts []NotReceivedGiftState) []NotReceivedGiftState {
+	out := make([]NotReceivedGiftState, len(gifts))
+	for i, gift := range gifts {
+		out[i] = NotReceivedGiftState{
+			GiftCommon: GiftCommonState{
+				PossessionType:        gift.GiftCommon.PossessionType,
+				PossessionID:          gift.GiftCommon.PossessionID,
+				Count:                 gift.GiftCommon.Count,
+				GrantDatetime:         gift.GiftCommon.GrantDatetime,
+				DescriptionGiftTextID: gift.GiftCommon.DescriptionGiftTextID,
+				EquipmentData:         append([]byte(nil), gift.GiftCommon.EquipmentData...),
+			},
+			ExpirationDatetime: gift.ExpirationDatetime,
+			UserGiftUUID:       gift.UserGiftUUID,
+		}
+	}
+	return out
+}
+
+func cloneReceivedGifts(gifts []ReceivedGiftState) []ReceivedGiftState {
+	out := make([]ReceivedGiftState, len(gifts))
+	for i, gift := range gifts {
+		out[i] = ReceivedGiftState{
+			GiftCommon: GiftCommonState{
+				PossessionType:        gift.GiftCommon.PossessionType,
+				PossessionID:          gift.GiftCommon.PossessionID,
+				Count:                 gift.GiftCommon.Count,
+				GrantDatetime:         gift.GiftCommon.GrantDatetime,
+				DescriptionGiftTextID: gift.GiftCommon.DescriptionGiftTextID,
+				EquipmentData:         append([]byte(nil), gift.GiftCommon.EquipmentData...),
+			},
+			ReceivedDatetime: gift.ReceivedDatetime,
+		}
+	}
+	return out
 }

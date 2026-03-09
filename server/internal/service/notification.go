@@ -33,7 +33,7 @@ func (s *NotificationServiceServer) GetHeaderNotification(ctx context.Context, r
 		}, nil
 	}
 	return &pb.GetHeaderNotificationResponse{
-		GiftNotReceiveCount:       user.Notifications.GiftNotReceiveCount,
+		GiftNotReceiveCount:       int32(len(user.Gifts.NotReceived)),
 		FriendRequestReceiveCount: user.Notifications.FriendRequestReceiveCount,
 		IsExistUnreadInformation:  user.Notifications.IsExistUnreadInformation,
 		DiffUserData:              mock.EmptyDiff(),
