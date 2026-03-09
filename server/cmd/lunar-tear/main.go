@@ -98,6 +98,7 @@ func main() {
 	userStore := store.New(nil)
 
 	pb.RegisterUserServiceServer(grpcServer, service.NewUserServiceServer(userStore))
+	pb.RegisterBattleServiceServer(grpcServer, service.NewBattleServiceServer(userStore))
 	pb.RegisterConfigServiceServer(grpcServer, service.NewConfigServiceServer(*host, int32(*grpcPort), octoURL))
 	pb.RegisterDataServiceServer(grpcServer, service.NewDataServiceServer(userStore))
 	pb.RegisterTutorialServiceServer(grpcServer, service.NewTutorialServiceServer(userStore))

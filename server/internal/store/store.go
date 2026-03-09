@@ -84,6 +84,7 @@ type UserState struct {
 	LoginBonus    UserLoginBonusState
 	Tutorial      TutorialProgressState
 	MainQuest     MainQuestState
+	Battle        BattleState
 	Gifts         GiftState
 	Gacha         GachaState
 	Notifications NotificationState
@@ -227,6 +228,18 @@ type MainQuestState struct {
 	ProgressQuestFlowType    int32
 	MainQuestSeasonID        int32
 	LatestVersion            int64
+}
+
+type BattleState struct {
+	IsActive              bool
+	StartCount            int32
+	FinishCount           int32
+	LastStartedAt         int64
+	LastFinishedAt        int64
+	LastUserPartyCount    int32
+	LastNpcPartyCount     int32
+	LastBattleBinarySize  int32
+	LastElapsedFrameCount int64
 }
 
 type UserQuestState struct {
@@ -567,6 +580,17 @@ func seedUserState(userID int64, uuid string, nowMillis int64) *UserState {
 			ChoiceID:      0,
 			LatestVersion: 0,
 		},
+		Battle: BattleState{
+			IsActive:              false,
+			StartCount:            0,
+			FinishCount:           0,
+			LastStartedAt:         0,
+			LastFinishedAt:        0,
+			LastUserPartyCount:    0,
+			LastNpcPartyCount:     0,
+			LastBattleBinarySize:  0,
+			LastElapsedFrameCount: 0,
+		},
 		Gifts: GiftState{
 			NotReceived: []NotReceivedGiftState{
 				{
@@ -736,6 +760,17 @@ func (u UserState) clone() UserState {
 	out.Gifts = GiftState{
 		NotReceived: cloneNotReceivedGifts(u.Gifts.NotReceived),
 		Received:    cloneReceivedGifts(u.Gifts.Received),
+	}
+	out.Battle = BattleState{
+		IsActive:              u.Battle.IsActive,
+		StartCount:            u.Battle.StartCount,
+		FinishCount:           u.Battle.FinishCount,
+		LastStartedAt:         u.Battle.LastStartedAt,
+		LastFinishedAt:        u.Battle.LastFinishedAt,
+		LastUserPartyCount:    u.Battle.LastUserPartyCount,
+		LastNpcPartyCount:     u.Battle.LastNpcPartyCount,
+		LastBattleBinarySize:  u.Battle.LastBattleBinarySize,
+		LastElapsedFrameCount: u.Battle.LastElapsedFrameCount,
 	}
 	return out
 }

@@ -262,6 +262,63 @@ func TestGiftServiceUsesStoreBackedDefaultGift(t *testing.T) {
 	}
 }
 
+func TestBattleServiceUsesStoreBackedBattleState(t *testing.T) {
+	userStore := store.New(func() time.Time {
+		return time.Unix(1_700_000_000, 0)
+	})
+	userService := NewUserServiceServer(userStore)
+	battleService := NewBattleServiceServer(userStore)
+
+	authResp, err := userService.Auth(context.Background(), &pb.AuthUserRequest{
+		Uuid:      "user-6",
+		Signature: "sig",
+	})
+	if err != nil {
+		t.Fatalf("Auth returned error: %v", err)
+	}
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-session-key", authResp.SessionKey))
+	_, err = battleService.StartWave(ctx, &pb.StartWaveRequest{
+		UserPartyInitialInfoList: []*pb.UserPartyInitialInfo{{UserId: authResp.UserId}},
+		NpcPartyInitialInfoList:  []*pb.NpcPartyInitialInfo{{NpcId: 1}},
+	})
+	if err != nil {
+		t.Fatalf("StartWave returned error: %v", err)
+	}
+
+	user, ok := userStore.SnapshotUser(authResp.UserId)
+	if !ok {
+		t.Fatal("user snapshot missing after StartWave")
+	}
+	if !user.Battle.IsActive || user.Battle.StartCount != 1 {
+		t.Fatalf("battle state after StartWave = %+v, want active with startCount=1", user.Battle)
+	}
+	if user.Battle.LastUserPartyCount != 1 || user.Battle.LastNpcPartyCount != 1 {
+		t.Fatalf("battle party counts after StartWave = user:%d npc:%d, want 1/1", user.Battle.LastUserPartyCount, user.Battle.LastNpcPartyCount)
+	}
+
+	_, err = battleService.FinishWave(ctx, &pb.FinishWaveRequest{
+		BattleBinary:            []byte{1, 2, 3},
+		UserPartyResultInfoList: []*pb.UserPartyResultInfo{{UserId: authResp.UserId}},
+		NpcPartyResultInfoList:  []*pb.NpcPartyResultInfo{{NpcId: 1}},
+		ElapsedFrameCount:       390,
+	})
+	if err != nil {
+		t.Fatalf("FinishWave returned error: %v", err)
+	}
+
+	user, ok = userStore.SnapshotUser(authResp.UserId)
+	if !ok {
+		t.Fatal("user snapshot missing after FinishWave")
+	}
+	if user.Battle.IsActive || user.Battle.FinishCount != 1 {
+		t.Fatalf("battle state after FinishWave = %+v, want inactive with finishCount=1", user.Battle)
+	}
+	if user.Battle.LastBattleBinarySize != 3 || user.Battle.LastElapsedFrameCount != 390 {
+		t.Fatalf("battle finish state = %+v, want binarySize=3 elapsed=390", user.Battle)
+	}
+}
+
 func contains(s, want string) bool {
 	return len(s) >= len(want) && (s == want || contextContains(s, want))
 }
