@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"time"
 
@@ -142,18 +141,38 @@ func (s *QuestServiceServer) FinishMainQuest(ctx context.Context, req *pb.Finish
 	log.Printf("[QuestService] FinishMainQuest: questId=%d isMainFlow=%v isRetired=%v storySkipType=%d",
 		req.QuestId, req.IsMainFlow, req.IsRetired, req.StorySkipType)
 
-	now := time.Now().Unix()
-	questJSON := fmt.Sprintf(`[{"UserId":1001,"QuestId":%d,"QuestStateType":3,"IsBattleOnly":false,"LatestStartDatetime":%d,"ClearCount":1,"DailyClearCount":1,"LastClearDatetime":%d,"ShortestClearFrames":600,"LatestVersion":0}]`,
-		req.QuestId, now, now)
-
-	flowJSON := `[{"UserId":1001,"CurrentMainQuestRouteId":1,"CurrentQuestSceneId":3,"HeadQuestSceneId":3,"IsReachedLastQuestScene":false,"LatestVersion":0}]`
+	nowMillis := time.Now().UnixMilli()
+	questJSON, _ := json.Marshal([]map[string]any{
+		{
+			"userId":              mock.DefaultUserID,
+			"questId":             req.QuestId,
+			// Client clear checks use QuestStateType == 2.
+			"questStateType":      2,
+			"isBattleOnly":        false,
+			"latestStartDatetime": nowMillis,
+			"clearCount":          1,
+			"dailyClearCount":     1,
+			"lastClearDatetime":   nowMillis,
+			"shortestClearFrames": 600,
+			"latestVersion":       0,
+		},
+	})
+	sceneDiff, flowJSON, mainFlowJSON, progressJSON := buildMainQuestSceneProgressDiff(3)
 
 	diff := map[string]*pb.DiffData{
-		"IUserQuest":                   {UpdateRecordsJson: questJSON},
-		"IUserMainQuestMainFlowStatus": {UpdateRecordsJson: flowJSON},
+		"IUserQuest": {
+			UpdateRecordsJson: string(questJSON),
+			DeleteKeysJson:    "[]",
+		},
+		"IUserMainQuestFlowStatus":     sceneDiff["IUserMainQuestFlowStatus"],
+		"IUserMainQuestMainFlowStatus": sceneDiff["IUserMainQuestMainFlowStatus"],
+		"IUserMainQuestProgressStatus": sceneDiff["IUserMainQuestProgressStatus"],
 	}
 
-	log.Printf("[QuestService] FinishMainQuest diff: IUserQuest=%s IUserMainQuestMainFlowStatus=%s", questJSON, flowJSON)
+	log.Printf(
+		"[QuestService] FinishMainQuest diff: IUserQuest=%s IUserMainQuestFlowStatus=%s IUserMainQuestMainFlowStatus=%s IUserMainQuestProgressStatus=%s",
+		string(questJSON), flowJSON, mainFlowJSON, progressJSON,
+	)
 
 	return &pb.FinishMainQuestResponse{
 		DiffUserData: diff,
