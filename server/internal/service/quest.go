@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -23,12 +24,52 @@ func NewQuestServiceServer() *QuestServiceServer {
 func (s *QuestServiceServer) UpdateMainFlowSceneProgress(ctx context.Context, req *pb.UpdateMainFlowSceneProgressRequest) (*pb.UpdateMainFlowSceneProgressResponse, error) {
 	log.Printf("[QuestService] UpdateMainFlowSceneProgress: questSceneId=%d", req.QuestSceneId)
 
-	flowJSON := fmt.Sprintf(`[{"UserId":1001,"CurrentMainQuestRouteId":1,"CurrentQuestSceneId":%d,"HeadQuestSceneId":%d,"IsReachedLastQuestScene":false,"LatestVersion":0}]`,
-		req.QuestSceneId, req.QuestSceneId)
+	mainFlowJSON, _ := json.Marshal([]map[string]any{
+		{
+			"userId":                  mock.DefaultUserID,
+			"currentMainQuestRouteId": 1,
+			"currentQuestSceneId":     req.QuestSceneId,
+			"headQuestSceneId":        req.QuestSceneId,
+			"isReachedLastQuestScene": false,
+			"latestVersion":           0,
+		},
+	})
+	progressJSON, _ := json.Marshal([]map[string]any{
+		{
+			"userId":               mock.DefaultUserID,
+			"currentQuestSceneId":  req.QuestSceneId,
+			"headQuestSceneId":     req.QuestSceneId,
+			"currentQuestFlowType": 1,
+			"latestVersion":        0,
+		},
+	})
+	flowJSON, _ := json.Marshal([]map[string]any{
+		{
+			"userId":               mock.DefaultUserID,
+			"currentQuestFlowType": 1,
+			"latestVersion":        0,
+		},
+	})
 
 	diff := map[string]*pb.DiffData{
-		"IUserMainQuestMainFlowStatus": {UpdateRecordsJson: flowJSON},
+		"IUserMainQuestFlowStatus": {
+			UpdateRecordsJson: string(flowJSON),
+			DeleteKeysJson:    "[]",
+		},
+		"IUserMainQuestMainFlowStatus": {
+			UpdateRecordsJson: string(mainFlowJSON),
+			DeleteKeysJson:    "[]",
+		},
+		"IUserMainQuestProgressStatus": {
+			UpdateRecordsJson: string(progressJSON),
+			DeleteKeysJson:    "[]",
+		},
 	}
+
+	log.Printf(
+		"[QuestService] UpdateMainFlowSceneProgress diff: IUserMainQuestFlowStatus=%s IUserMainQuestMainFlowStatus=%s IUserMainQuestProgressStatus=%s",
+		string(flowJSON), string(mainFlowJSON), string(progressJSON),
+	)
 
 	return &pb.UpdateMainFlowSceneProgressResponse{
 		DiffUserData: diff,
@@ -53,13 +94,30 @@ func (s *QuestServiceServer) StartMainQuest(ctx context.Context, req *pb.StartMa
 	log.Printf("[QuestService] StartMainQuest: questId=%d isMainFlow=%v deckNum=%d battleOnly=%v replayFlow=%v",
 		req.QuestId, req.IsMainFlow, req.UserDeckNumber, req.IsBattleOnly, req.IsReplayFlow)
 
-	now := time.Now().Unix()
-	questJSON := fmt.Sprintf(`[{"UserId":1001,"QuestId":%d,"QuestStateType":1,"IsBattleOnly":false,"LatestStartDatetime":%d,"ClearCount":0,"DailyClearCount":0,"LastClearDatetime":0,"ShortestClearFrames":0,"LatestVersion":0}]`,
-		req.QuestId, now)
+	nowMillis := time.Now().UnixMilli()
+	questJSON, _ := json.Marshal([]map[string]any{
+		{
+			"userId":              mock.DefaultUserID,
+			"questId":             req.QuestId,
+			"questStateType":      1,
+			"isBattleOnly":        req.IsBattleOnly,
+			"latestStartDatetime": nowMillis,
+			"clearCount":          0,
+			"dailyClearCount":     0,
+			"lastClearDatetime":   int64(0),
+			"shortestClearFrames": 0,
+			"latestVersion":       0,
+		},
+	})
 
 	diff := map[string]*pb.DiffData{
-		"IUserQuest": {UpdateRecordsJson: questJSON},
+		"IUserQuest": {
+			UpdateRecordsJson: string(questJSON),
+			DeleteKeysJson:    "[]",
+		},
 	}
+
+	log.Printf("[QuestService] StartMainQuest diff: IUserQuest=%s", string(questJSON))
 
 	return &pb.StartMainQuestResponse{
 		BattleDropReward: []*pb.BattleDropReward{},

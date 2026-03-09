@@ -30,6 +30,7 @@ let trackedCheckBeforeRequestContext = ptr(0);
 let trackedCheckBeforeResponseContext = ptr(0);
 let trackedCheckBeforeAsyncUnaryCall = ptr(0);
 let trackedCheckBeforeTask = ptr(0);
+let trackedUpdateMainFlowRequest = ptr(0);
 
 const OFFSETS = {
   titleOnComplete: 0x30bdb44,
@@ -55,6 +56,13 @@ const OFFSETS = {
   checkBeforeGamePlayRequestGetTextClientSystemLanguageTypeId: 0x3e42b70,
   checkBeforeGamePlayRequestWriteTo: 0x3e42d5c,
   checkBeforeGamePlayRequestCalculateSize: 0x3e42e14,
+  updateMainFlowSceneProgressRequestCtor: 0x47db3c0,
+  updateMainFlowSceneProgressRequestGetQuestSceneId: 0x47db470,
+  updateMainFlowSceneProgressRequestWriteTo: 0x47db5e8,
+  updateMainFlowSceneProgressRequestCalculateSize: 0x47db640,
+  updateMainFlowSceneProgressResponseCtor: 0x3f1643c,
+  updateMainFlowSceneProgressResponseGetDiffUserData: 0x3f16584,
+  updateMainFlowSceneProgressResponseMergeFrom: 0x3f16844,
   gameplayCreateAsyncTitleEndContents: 0x2769294,
   gameplayStartGameplayStateMachine: 0x276cd90,
   gameplayOnMainStoryAsync: 0x276cdec,
@@ -290,6 +298,10 @@ function isTrackedCheckBeforeRequest(self) {
   return !!self && !self.isNull() && !trackedCheckBeforeRequest.isNull() && self.equals(trackedCheckBeforeRequest);
 }
 
+function isTrackedUpdateMainFlowRequest(self) {
+  return !!self && !self.isNull() && !trackedUpdateMainFlowRequest.isNull() && self.equals(trackedUpdateMainFlowRequest);
+}
+
 function isTrackedCheckBeforeRequestContext(self) {
   return !!self && !self.isNull() && !trackedCheckBeforeRequestContext.isNull() && self.equals(trackedCheckBeforeRequestContext);
 }
@@ -300,6 +312,7 @@ function resetTrackedCheckBefore() {
   trackedCheckBeforeResponseContext = ptr(0);
   trackedCheckBeforeAsyncUnaryCall = ptr(0);
   trackedCheckBeforeTask = ptr(0);
+  trackedUpdateMainFlowRequest = ptr(0);
 }
 
 function onFinishRelatedTrace(context, limit = 10) {
@@ -389,6 +402,85 @@ awaitLibil2cpp(() => {
     },
     onLeave(retval) {
       console.log(`[OnFinishFlow] IGamePlayService.CheckBeforeGamePlayAsync -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('UpdateMainFlowSceneProgressRequest..ctor', OFFSETS.updateMainFlowSceneProgressRequestCtor, {
+    onEnter(args) {
+      trackedUpdateMainFlowRequest = args[0];
+      console.log(
+        `[OnFinishFlow] #${nextSeq()} UpdateMainFlowSceneProgressRequest..ctor self=${pointerSummary(args[0])}`,
+      );
+    },
+  });
+
+  hook('UpdateMainFlowSceneProgressRequest.get_QuestSceneId', OFFSETS.updateMainFlowSceneProgressRequestGetQuestSceneId, {
+    onEnter(args) {
+      if (!isTrackedUpdateMainFlowRequest(args[0])) return;
+      this.shouldLog = true;
+      console.log(`[OnFinishFlow] #${nextSeq()} UpdateMainFlowSceneProgressRequest.get_QuestSceneId self=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[OnFinishFlow] UpdateMainFlowSceneProgressRequest.get_QuestSceneId -> ${retval.toInt32()}`);
+    },
+  });
+
+  hook('UpdateMainFlowSceneProgressRequest.CalculateSize', OFFSETS.updateMainFlowSceneProgressRequestCalculateSize, {
+    onEnter(args) {
+      if (!isTrackedUpdateMainFlowRequest(args[0])) return;
+      this.shouldLog = true;
+      console.log(`[OnFinishFlow] #${nextSeq()} UpdateMainFlowSceneProgressRequest.CalculateSize self=${pointerSummary(args[0])}`);
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      console.log(`[OnFinishFlow] UpdateMainFlowSceneProgressRequest.CalculateSize -> ${retval.toInt32()}`);
+    },
+  });
+
+  hook('UpdateMainFlowSceneProgressRequest.WriteTo', OFFSETS.updateMainFlowSceneProgressRequestWriteTo, {
+    onEnter(args) {
+      if (!isTrackedUpdateMainFlowRequest(args[0])) return;
+      this.shouldLog = true;
+      console.log(
+        `[OnFinishFlow] #${nextSeq()} UpdateMainFlowSceneProgressRequest.WriteTo self=${pointerSummary(args[0])} output=${pointerSummary(args[1])}`,
+      );
+    },
+    onLeave() {
+      if (!this.shouldLog) return;
+      console.log('[OnFinishFlow] UpdateMainFlowSceneProgressRequest.WriteTo completed');
+    },
+  });
+
+  hook('UpdateMainFlowSceneProgressResponse..ctor', OFFSETS.updateMainFlowSceneProgressResponseCtor, {
+    onEnter(args) {
+      console.log(
+        `[OnFinishFlow] #${nextSeq()} UpdateMainFlowSceneProgressResponse..ctor self=${pointerSummary(args[0])}`,
+      );
+    },
+  });
+
+  hook('UpdateMainFlowSceneProgressResponse.get_DiffUserData', OFFSETS.updateMainFlowSceneProgressResponseGetDiffUserData, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(
+        `[OnFinishFlow] #${nextSeq()} UpdateMainFlowSceneProgressResponse.get_DiffUserData self=${pointerSummary(args[0])}`,
+      );
+    },
+    onLeave(retval) {
+      console.log(`[OnFinishFlow] UpdateMainFlowSceneProgressResponse.get_DiffUserData -> ${pointerSummary(retval)}`);
+    },
+  });
+
+  hook('UpdateMainFlowSceneProgressResponse.MergeFrom', OFFSETS.updateMainFlowSceneProgressResponseMergeFrom, {
+    onEnter(args) {
+      this.self = args[0];
+      console.log(
+        `[OnFinishFlow] #${nextSeq()} UpdateMainFlowSceneProgressResponse.MergeFrom self=${pointerSummary(args[0])} input=${pointerSummary(args[1])}`,
+      );
+    },
+    onLeave() {
+      console.log(`[OnFinishFlow] UpdateMainFlowSceneProgressResponse.MergeFrom completed self=${pointerSummary(this.self)}`);
     },
   });
 
@@ -495,7 +587,7 @@ awaitLibil2cpp(() => {
     },
   });
 
-  hook('DarkClient.InvokeAsync<CheckBeforeGamePlayRequest, CheckBeforeGamePlayResponse>', OFFSETS.darkClientInvokeAsyncCheckBeforeGamePlay, {
+  hook('DarkClient.InvokeAsync<TRequest, TResponse>', OFFSETS.darkClientInvokeAsyncCheckBeforeGamePlay, {
     onEnter(args) {
       this.path = readManagedString(args[1]);
       this.isTrackedCheckBefore = this.path === 'GamePlayService/CheckBeforeGamePlayAsync';
@@ -503,7 +595,7 @@ awaitLibil2cpp(() => {
         pendingCheckBeforeInvokeDepth += 1;
       }
       console.log(
-        `[OnFinishFlow] #${nextSeq()} DarkClient.InvokeAsync<CheckBeforeGamePlayRequest, CheckBeforeGamePlayResponse> self=${pointerSummary(args[0])} path=${this.path} request=${pointerSummary(args[2])} requestMethod=${pointerSummary(args[3])}`,
+        `[OnFinishFlow] #${nextSeq()} DarkClient.InvokeAsync<TRequest, TResponse> self=${pointerSummary(args[0])} path=${this.path} request=${pointerSummary(args[2])} requestMethod=${pointerSummary(args[3])}`,
       );
     },
     onLeave(retval) {
@@ -511,18 +603,18 @@ awaitLibil2cpp(() => {
         trackedCheckBeforeTask = retval;
         pendingCheckBeforeInvokeDepth = Math.max(0, pendingCheckBeforeInvokeDepth - 1);
       }
-      console.log(`[OnFinishFlow] DarkClient.InvokeAsync<CheckBeforeGamePlayRequest, CheckBeforeGamePlayResponse> -> ${pointerSummary(retval)}`);
+      console.log(`[OnFinishFlow] DarkClient.InvokeAsync<TRequest, TResponse> -> ${pointerSummary(retval)}`);
     },
   });
 
-  hook('ResponseContext<CheckBeforeGamePlayResponse>..ctor', OFFSETS.responseContextCtorCheckBeforeGamePlay, {
+  hook('ResponseContext<T>..ctor', OFFSETS.responseContextCtorCheckBeforeGamePlay, {
     onEnter(args) {
       if (pendingCheckBeforeInvokeDepth > 0) {
         trackedCheckBeforeResponseContext = args[0];
         trackedCheckBeforeAsyncUnaryCall = args[1];
       }
       console.log(
-        `[OnFinishFlow] #${nextSeq()} ResponseContext<CheckBeforeGamePlayResponse>..ctor self=${pointerSummary(args[0])} call=${pointerSummary(args[1])}`,
+        `[OnFinishFlow] #${nextSeq()} ResponseContext<T>..ctor self=${pointerSummary(args[0])} call=${pointerSummary(args[1])}`,
       );
     },
   });
