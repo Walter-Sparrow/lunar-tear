@@ -100,6 +100,7 @@ func main() {
 	pb.RegisterDataServiceServer(grpcServer, service.NewDataServiceServer())
 	pb.RegisterTutorialServiceServer(grpcServer, service.NewTutorialServiceServer())
 	pb.RegisterGamePlayServiceServer(grpcServer, service.NewGameplayServiceServer())
+	pb.RegisterGimmickServiceServer(grpcServer, service.NewGimmickServiceServer())
 	pb.RegisterQuestServiceServer(grpcServer, service.NewQuestServiceServer())
 	pb.RegisterNotificationServiceServer(grpcServer, service.NewNotificationServiceServer())
 
