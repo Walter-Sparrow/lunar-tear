@@ -33,6 +33,8 @@ Reach the first playable/home flow with minimal client patching and a server-fir
   - Client calls `apb.api.gameplay.GamePlayService`
   - Server had registered `apb.api.gameplay.GameplayService`
 - The gameplay proto and Go server registration have now been corrected to `GamePlayService`.
+- The active-mission interruption dialog after `CheckBeforeGamePlay` was caused by seeded running-main-quest state in `GameStart`.
+- Clearing the initial `IUserMainQuestProgressStatus` / `IUserMainQuestFlowStatus` running-state fields removed that dialog and allowed natural main-story startup to continue.
 
 ## What Was Proven About `GameStart`
 - The old immediate `GameStart` crash was inside `UserDiffUpdateInterceptor` while applying `DiffUserData`.
@@ -96,6 +98,11 @@ Reach the first playable/home flow with minimal client patching and a server-fir
   - `ServiceName: "apb.api.gameplay.GamePlayService"`
   - full method `/apb.api.gameplay.GamePlayService/CheckBeforeGamePlay`
 - `server/cmd/lunar-tear/main.go` now registers `pb.RegisterGamePlayServiceServer(...)`.
+- `QuestService.UpdateMainFlowSceneProgress()` now sends a consistent lower-camel diff bundle for:
+  - `IUserMainQuestFlowStatus`
+  - `IUserMainQuestMainFlowStatus`
+  - `IUserMainQuestProgressStatus`
+- `QuestService.StartMainQuest()` now sends lower-camel `IUserQuest` with unix-millis `latestStartDatetime` and explicit `DeleteKeysJson = "[]"`.
 
 ## Current Boundary
 `GameStart` diff application is no longer the blocker.
@@ -111,22 +118,34 @@ What is now proven:
 - `Title.OnFinish` issues `GamePlayService/CheckBeforeGamePlayAsync`.
 - The request is created, serialized, and wrapped in `ResponseContext` successfully.
 - The previously observed post-`OnFinish` failure was a server `Unimplemented` reply caused by the wrong gRPC service name.
-- That naming mismatch is now fixed; the next runtime run should reveal the first blocker after a successful `CheckBeforeGamePlay` dispatch.
+- That naming mismatch is now fixed.
+- The client now progresses further through natural main-story startup:
+  - `QuestService/UpdateMainFlowSceneProgress`
+  - `QuestService/StartMainQuest`
+  - `NotificationService/GetHeaderNotification`
+  - `QuestService/UpdateMainQuestSceneProgress`
+- The next confirmed blocker is:
+  - `GimmickService/InitSequenceScheduleAsync`
+  - server reply: `Unimplemented`
+  - detail: `unknown service apb.api.gimmick.GimmickService`
 
 ## Current Concern
-The active blocker is no longer JSON shape, diff application, or unknown request-body transport behavior.
+The active blocker is no longer JSON shape, diff application, request-body transport, `CheckBeforeGamePlay`, or the initial main-quest startup RPCs.
 
 The prior uncertainty about `CheckBeforeGamePlay` transport has been resolved:
 - the client did serialize the body
 - the server was responding with `Unimplemented`
 - the cause was service-name mismatch, not payload corruption
 
-The likely remaining issue is now the first continuation after a correctly handled `CheckBeforeGamePlay` call, not missing `GameStart` starter rows.
+The current trusted boundary is later:
+- the client now enters the mission start sequence naturally
+- quest-start progress diffs are being consumed far enough to reach later outgame/gameplay initialization
+- the next hard blocker is a missing `GimmickService`
 
 Working hypothesis:
 - The currently trusted 14-table `GameStart` diff is sufficient to get through diff application and title completion.
-- With `GamePlayService` naming corrected, the next failure boundary will likely move forward into response handling or the next gameplay/outgame continuation.
-- The next investigation should stay focused on the post-`OnFinish` handoff rather than adding more `GameStart` tables.
+- With `GamePlayService` and the early quest-state diffs corrected, the remaining blocker is now missing server implementation for the next post-quest initialization service call.
+- The next investigation should focus on `apb.api.gimmick.GimmickService`, starting with `InitSequenceScheduleAsync`, rather than revisiting `GameStart` starter rows.
 
 ## Active Instrumentation
 Primary scripts:
@@ -137,6 +156,10 @@ Current useful probes:
 - title FSM progression
 - `GameStart` interceptor path
 - post-`OnFinish` `CheckBeforeGamePlay` lifecycle
+- `QuestService/UpdateMainFlowSceneProgressAsync`
+- `QuestService/StartMainQuestAsync`
+- `QuestService/UpdateMainQuestSceneProgressAsync`
+- late post-quest service dispatches (now including `GimmickService/InitSequenceScheduleAsync`)
 - `RequestContext..ctor`
 - `ErrorHandlingInterceptor.SendAsync`
 - `ErrorHandlingInterceptor.ErrorHandling`
@@ -171,15 +194,19 @@ Most relevant symbols / areas:
 - `Title.<OnGraphicQualitySetting>d__39.MoveNext`
 - `Title.OnFinish`
 - `IGamePlayService.CheckBeforeGamePlayAsync`
+- `IQuestService.UpdateMainFlowSceneProgressAsync`
+- `IQuestService.StartMainQuestAsync`
+- `IQuestService.UpdateMainQuestSceneProgressAsync`
+- `IGimmickService.InitSequenceScheduleAsync`
 - `RequestContext..ctor`
 - `ErrorHandlingInterceptor.SendAsync`
 - `ErrorHandlingInterceptor.ErrorHandling`
 - `ResponseContext<T>.WaitResponseAsync`
 
 ## Immediate Next Step
-Run again with the fixed `GamePlayService` registration and capture the next `OnFinish` / gameplay handoff logs.
+Implement or stub `apb.api.gimmick.GimmickService`, starting with `InitSequenceScheduleAsync`.
 
 Goal of that step:
-- confirm `CheckBeforeGamePlay` no longer returns `Unimplemented`
-- determine whether `CheckBeforeGamePlayResponse` now materializes on the client
-- identify the next real blocker in `Gameplay.OnRunApplicationAsync`, `Gameplay.OnTitleAsync`, `Gameplay.OnMainStoryAsync`, or the first continuation they schedule
+- satisfy the next missing service after natural quest startup
+- determine whether the client proceeds past `GimmickService/InitSequenceScheduleAsync`
+- identify the next real blocker after gimmick initialization if one remains
