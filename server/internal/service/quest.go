@@ -2,82 +2,46 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"time"
 
 	pb "lunar-tear/server/gen/proto"
 	"lunar-tear/server/internal/mock"
+	"lunar-tear/server/internal/store"
+	"lunar-tear/server/internal/userdata"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 type QuestServiceServer struct {
 	pb.UnimplementedQuestServiceServer
+	store *store.Store
 }
 
-func NewQuestServiceServer() *QuestServiceServer {
-	return &QuestServiceServer{}
+func NewQuestServiceServer(userStore *store.Store) *QuestServiceServer {
+	return &QuestServiceServer{store: userStore}
 }
 
-func buildMainQuestSceneProgressDiff(sceneID int32) (map[string]*pb.DiffData, string, string, string) {
-	mainFlowJSON, _ := json.Marshal([]map[string]any{
-		{
-			"userId":                  mock.DefaultUserID,
-			"currentMainQuestRouteId": 1,
-			"currentQuestSceneId":     sceneID,
-			"headQuestSceneId":        sceneID,
-			"isReachedLastQuestScene": false,
-			"latestVersion":           0,
-		},
-	})
-	progressJSON, _ := json.Marshal([]map[string]any{
-		{
-			"userId":               mock.DefaultUserID,
-			"currentQuestSceneId":  sceneID,
-			"headQuestSceneId":     sceneID,
-			"currentQuestFlowType": 1,
-			"latestVersion":        0,
-		},
-	})
-	flowJSON, _ := json.Marshal([]map[string]any{
-		{
-			"userId":               mock.DefaultUserID,
-			"currentQuestFlowType": 1,
-			"latestVersion":        0,
-		},
-	})
-
-	diff := map[string]*pb.DiffData{
-		"IUserMainQuestFlowStatus": {
-			UpdateRecordsJson: string(flowJSON),
-			DeleteKeysJson:    "[]",
-		},
-		"IUserMainQuestMainFlowStatus": {
-			UpdateRecordsJson: string(mainFlowJSON),
-			DeleteKeysJson:    "[]",
-		},
-		"IUserMainQuestProgressStatus": {
-			UpdateRecordsJson: string(progressJSON),
-			DeleteKeysJson:    "[]",
-		},
-	}
-
-	return diff, string(flowJSON), string(mainFlowJSON), string(progressJSON)
+func buildSelectedQuestDiff(user store.UserState, tableNames []string) map[string]*pb.DiffData {
+	return userdata.BuildDiffFromTables(userdata.SelectTables(userdata.FullClientTableMap(user), tableNames))
 }
 
 func (s *QuestServiceServer) UpdateMainFlowSceneProgress(ctx context.Context, req *pb.UpdateMainFlowSceneProgressRequest) (*pb.UpdateMainFlowSceneProgressResponse, error) {
 	log.Printf("[QuestService] UpdateMainFlowSceneProgress: questSceneId=%d", req.QuestSceneId)
 
-	diff, flowJSON, mainFlowJSON, progressJSON := buildMainQuestSceneProgressDiff(req.QuestSceneId)
-
-	log.Printf(
-		"[QuestService] UpdateMainFlowSceneProgress diff: IUserMainQuestFlowStatus=%s IUserMainQuestMainFlowStatus=%s IUserMainQuestProgressStatus=%s",
-		flowJSON, mainFlowJSON, progressJSON,
-	)
+	userID := currentUserID(ctx, s.store)
+	user, _ := s.store.UpdateUser(userID, func(user *store.UserState) {
+		user.MainQuest.CurrentQuestFlowType = 1
+		user.MainQuest.CurrentQuestSceneID = req.QuestSceneId
+		user.MainQuest.HeadQuestSceneID = req.QuestSceneId
+		user.MainQuest.IsReachedLastQuestScene = false
+		user.MainQuest.ProgressQuestSceneID = req.QuestSceneId
+		user.MainQuest.ProgressHeadQuestSceneID = req.QuestSceneId
+		user.MainQuest.ProgressQuestFlowType = 1
+	})
 
 	return &pb.UpdateMainFlowSceneProgressResponse{
-		DiffUserData: diff,
+		DiffUserData: buildSelectedQuestDiff(user, mainQuestDiffTables),
 	}, nil
 }
 
@@ -91,14 +55,27 @@ func (s *QuestServiceServer) UpdateReplayFlowSceneProgress(ctx context.Context, 
 func (s *QuestServiceServer) UpdateMainQuestSceneProgress(ctx context.Context, req *pb.UpdateMainQuestSceneProgressRequest) (*pb.UpdateMainQuestSceneProgressResponse, error) {
 	log.Printf("[QuestService] UpdateMainQuestSceneProgress: questSceneId=%d", req.QuestSceneId)
 
-	diff, flowJSON, mainFlowJSON, progressJSON := buildMainQuestSceneProgressDiff(req.QuestSceneId)
-	log.Printf(
-		"[QuestService] UpdateMainQuestSceneProgress diff: IUserMainQuestFlowStatus=%s IUserMainQuestMainFlowStatus=%s IUserMainQuestProgressStatus=%s",
-		flowJSON, mainFlowJSON, progressJSON,
-	)
+	isRunning := req.QuestSceneId < 3
+	userID := currentUserID(ctx, s.store)
+	user, _ := s.store.UpdateUser(userID, func(user *store.UserState) {
+		user.MainQuest.CurrentQuestSceneID = req.QuestSceneId
+		user.MainQuest.HeadQuestSceneID = req.QuestSceneId
+		user.MainQuest.IsReachedLastQuestScene = !isRunning
+		if isRunning {
+			user.MainQuest.CurrentQuestFlowType = 1
+			user.MainQuest.ProgressQuestSceneID = req.QuestSceneId
+			user.MainQuest.ProgressHeadQuestSceneID = req.QuestSceneId
+			user.MainQuest.ProgressQuestFlowType = 1
+			return
+		}
+		user.MainQuest.CurrentQuestFlowType = 0
+		user.MainQuest.ProgressQuestSceneID = 0
+		user.MainQuest.ProgressHeadQuestSceneID = 0
+		user.MainQuest.ProgressQuestFlowType = 0
+	})
 
 	return &pb.UpdateMainQuestSceneProgressResponse{
-		DiffUserData: diff,
+		DiffUserData: buildSelectedQuestDiff(user, mainQuestDiffTables),
 	}, nil
 }
 
@@ -107,33 +84,19 @@ func (s *QuestServiceServer) StartMainQuest(ctx context.Context, req *pb.StartMa
 		req.QuestId, req.IsMainFlow, req.UserDeckNumber, req.IsBattleOnly, req.IsReplayFlow)
 
 	nowMillis := time.Now().UnixMilli()
-	questJSON, _ := json.Marshal([]map[string]any{
-		{
-			"userId":              mock.DefaultUserID,
-			"questId":             req.QuestId,
-			"questStateType":      1,
-			"isBattleOnly":        req.IsBattleOnly,
-			"latestStartDatetime": nowMillis,
-			"clearCount":          0,
-			"dailyClearCount":     0,
-			"lastClearDatetime":   int64(0),
-			"shortestClearFrames": 0,
-			"latestVersion":       0,
-		},
+	userID := currentUserID(ctx, s.store)
+	user, _ := s.store.UpdateUser(userID, func(user *store.UserState) {
+		quest := user.Quests[req.QuestId]
+		quest.QuestID = req.QuestId
+		quest.QuestStateType = 1
+		quest.IsBattleOnly = req.IsBattleOnly
+		quest.LatestStartDatetime = nowMillis
+		user.Quests[req.QuestId] = quest
 	})
-
-	diff := map[string]*pb.DiffData{
-		"IUserQuest": {
-			UpdateRecordsJson: string(questJSON),
-			DeleteKeysJson:    "[]",
-		},
-	}
-
-	log.Printf("[QuestService] StartMainQuest diff: IUserQuest=%s", string(questJSON))
 
 	return &pb.StartMainQuestResponse{
 		BattleDropReward: []*pb.BattleDropReward{},
-		DiffUserData:     diff,
+		DiffUserData:     buildSelectedQuestDiff(user, []string{"IUserQuest"}),
 	}, nil
 }
 
@@ -142,40 +105,36 @@ func (s *QuestServiceServer) FinishMainQuest(ctx context.Context, req *pb.Finish
 		req.QuestId, req.IsMainFlow, req.IsRetired, req.StorySkipType)
 
 	nowMillis := time.Now().UnixMilli()
-	questJSON, _ := json.Marshal([]map[string]any{
-		{
-			"userId":              mock.DefaultUserID,
-			"questId":             req.QuestId,
-			// Client clear checks use QuestStateType == 2.
-			"questStateType":      2,
-			"isBattleOnly":        false,
-			"latestStartDatetime": nowMillis,
-			"clearCount":          1,
-			"dailyClearCount":     1,
-			"lastClearDatetime":   nowMillis,
-			"shortestClearFrames": 600,
-			"latestVersion":       0,
-		},
+	userID := currentUserID(ctx, s.store)
+	user, _ := s.store.UpdateUser(userID, func(user *store.UserState) {
+		quest := user.Quests[req.QuestId]
+		quest.QuestID = req.QuestId
+		quest.QuestStateType = 2
+		quest.IsBattleOnly = false
+		if quest.LatestStartDatetime == 0 {
+			quest.LatestStartDatetime = nowMillis
+		}
+		quest.ClearCount++
+		quest.DailyClearCount++
+		quest.LastClearDatetime = nowMillis
+		quest.ShortestClearFrames = 600
+		user.Quests[req.QuestId] = quest
+
+		// Preserve the latest scene pointer established by scene-progress RPCs.
+		// FinishMainQuest should only clear the active "running quest" markers.
+		user.MainQuest.CurrentQuestFlowType = 0
+		user.MainQuest.ProgressQuestSceneID = 0
+		user.MainQuest.ProgressHeadQuestSceneID = 0
+		user.MainQuest.ProgressQuestFlowType = 0
 	})
-	sceneDiff, flowJSON, mainFlowJSON, progressJSON := buildMainQuestSceneProgressDiff(3)
-
-	diff := map[string]*pb.DiffData{
-		"IUserQuest": {
-			UpdateRecordsJson: string(questJSON),
-			DeleteKeysJson:    "[]",
-		},
-		"IUserMainQuestFlowStatus":     sceneDiff["IUserMainQuestFlowStatus"],
-		"IUserMainQuestMainFlowStatus": sceneDiff["IUserMainQuestMainFlowStatus"],
-		"IUserMainQuestProgressStatus": sceneDiff["IUserMainQuestProgressStatus"],
-	}
-
-	log.Printf(
-		"[QuestService] FinishMainQuest diff: IUserQuest=%s IUserMainQuestFlowStatus=%s IUserMainQuestMainFlowStatus=%s IUserMainQuestProgressStatus=%s",
-		string(questJSON), flowJSON, mainFlowJSON, progressJSON,
-	)
 
 	return &pb.FinishMainQuestResponse{
-		DiffUserData: diff,
+		DiffUserData: buildSelectedQuestDiff(user, []string{
+			"IUserQuest",
+			"IUserMainQuestFlowStatus",
+			"IUserMainQuestMainFlowStatus",
+			"IUserMainQuestProgressStatus",
+		}),
 	}, nil
 }
 

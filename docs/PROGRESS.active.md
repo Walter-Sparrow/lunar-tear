@@ -1,6 +1,6 @@
 # Lunar Tear Progress
 
-Last updated: 2026-03-08
+Last updated: 2026-03-09
 
 `docs/PROGRESS.md` is deprecated. This file tracks only the currently trusted state.
 
@@ -81,11 +81,16 @@ Reach the first playable/home flow with minimal client patching and a server-fir
   - title FSM then continues into `CheckResolutionSetting`, `OnGraphicQualitySetting`, and `OnFinish`
 
 ## Current Server Shape
-- `RegisterUser` / `Auth` still seed baseline diff data.
+- A shared in-memory store now backs the current bootstrap/runtime state:
+  - player/session state
+  - starter party and deck state
+  - main-quest progress state
+  - tutorial, mission, and gimmick bootstrap state
+- `RegisterUser` / `Auth` now read baseline state from that store and project it into client `IUser*` tables.
 - `GetUserDataNameV2` includes the account/core tables again with corrected JSON shapes.
+- `GetUserData()` now serves requested tables from store-backed projections instead of direct fixture assembly.
 - `GameStart()` no longer returns full `StartedDiff()`.
-- `GameStart()` now always returns the trusted starter diff via `StartedGameStartDiff()`.
-- `GameStart()` currently sends the 14-table starter/outgame set proven above.
+- `GameStart()` now sends the trusted 14-table starter/outgame set from the current in-memory user snapshot.
 - Current row detail retained from the earlier safe boundary:
   - `IUserProfile.favoriteCostumeId = 0`
 - Current diff detail:
@@ -104,6 +109,10 @@ Reach the first playable/home flow with minimal client patching and a server-fir
   - `IUserMainQuestMainFlowStatus`
   - `IUserMainQuestProgressStatus`
 - `QuestService.StartMainQuest()` now sends lower-camel `IUserQuest` with unix-millis `latestStartDatetime` and explicit `DeleteKeysJson = "[]"`.
+- `QuestService`, `TutorialService`, `GimmickService`, and `NotificationService` now mutate/read the shared in-memory store rather than relying only on stateless mock diffs.
+- `FinishMainQuest()` no longer hardcodes a final scene id.
+  - It preserves the latest main-quest scene pointer already established by `UpdateMainQuestSceneProgress(...)`.
+  - It only clears the active/running quest markers in `IUserMainQuestFlowStatus` / `IUserMainQuestProgressStatus`.
 - `GimmickService` is now registered and currently stubs:
   - `InitSequenceSchedule`
   - `UpdateSequence`
@@ -167,6 +176,9 @@ Working hypothesis:
 - The currently trusted 14-table `GameStart` diff is sufficient to get through diff application and title completion.
 - With `GamePlayService`, early quest-state diffs, `GimmickService`, and `FinishMainQuest` corrected, the remaining blocker is now a later post-quest state/progression handoff.
 - The likely issue is no longer "missing next service", but inconsistent server-side quest/world-state after quest completion, especially around the transition immediately after `FinishMainQuest` and the scene-progress update to scene `3`.
+- One cleanup already made from that investigation:
+  - `FinishMainQuest` no longer overwrites the scene pointer with a hardcoded `3`
+  - the scene pointer is now owned by the preceding/follow-up `UpdateMainQuestSceneProgress(...)` calls
 - The next investigation should focus on what state must change after `FinishMainQuest` / `UpdateMainQuestSceneProgress(3)` so the client leaves the black-screen state and proceeds into the intended outgame flow.
 
 ## Active Instrumentation
@@ -234,5 +246,5 @@ Investigate the post-quest black-screen handoff after `FinishMainQuest` and `Upd
 
 Goal of that step:
 - determine what state transition is still missing after quest completion
-- identify whether `FinishMainQuest` or the follow-up scene-progress update should clear or advance additional quest/world state
+- identify whether the follow-up scene-progress update should clear or advance additional quest/world state beyond the now-fixed `FinishMainQuest` cleanup
 - establish the next concrete RPC or table transition needed to leave the black screen

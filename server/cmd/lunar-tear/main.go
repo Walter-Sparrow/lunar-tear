@@ -11,6 +11,7 @@ import (
 
 	pb "lunar-tear/server/gen/proto"
 	"lunar-tear/server/internal/service"
+	"lunar-tear/server/internal/store"
 
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -94,15 +95,16 @@ func main() {
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(loggingInterceptor),
 	)
+	userStore := store.New(nil)
 
-	pb.RegisterUserServiceServer(grpcServer, service.NewUserServiceServer())
+	pb.RegisterUserServiceServer(grpcServer, service.NewUserServiceServer(userStore))
 	pb.RegisterConfigServiceServer(grpcServer, service.NewConfigServiceServer(*host, int32(*grpcPort), octoURL))
-	pb.RegisterDataServiceServer(grpcServer, service.NewDataServiceServer())
-	pb.RegisterTutorialServiceServer(grpcServer, service.NewTutorialServiceServer())
+	pb.RegisterDataServiceServer(grpcServer, service.NewDataServiceServer(userStore))
+	pb.RegisterTutorialServiceServer(grpcServer, service.NewTutorialServiceServer(userStore))
 	pb.RegisterGamePlayServiceServer(grpcServer, service.NewGameplayServiceServer())
-	pb.RegisterGimmickServiceServer(grpcServer, service.NewGimmickServiceServer())
-	pb.RegisterQuestServiceServer(grpcServer, service.NewQuestServiceServer())
-	pb.RegisterNotificationServiceServer(grpcServer, service.NewNotificationServiceServer())
+	pb.RegisterGimmickServiceServer(grpcServer, service.NewGimmickServiceServer(userStore))
+	pb.RegisterQuestServiceServer(grpcServer, service.NewQuestServiceServer(userStore))
+	pb.RegisterNotificationServiceServer(grpcServer, service.NewNotificationServiceServer(userStore))
 
 	reflection.Register(grpcServer)
 

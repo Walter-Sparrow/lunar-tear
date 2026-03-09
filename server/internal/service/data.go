@@ -5,7 +5,7 @@ import (
 	"log"
 
 	pb "lunar-tear/server/gen/proto"
-	"lunar-tear/server/internal/mock"
+	"lunar-tear/server/internal/store"
 	"lunar-tear/server/internal/userdata"
 
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -13,10 +13,11 @@ import (
 
 type DataServiceServer struct {
 	pb.UnimplementedDataServiceServer
+	store *store.Store
 }
 
-func NewDataServiceServer() *DataServiceServer {
-	return &DataServiceServer{}
+func NewDataServiceServer(userStore *store.Store) *DataServiceServer {
+	return &DataServiceServer{store: userStore}
 }
 
 func (s *DataServiceServer) GetLatestMasterDataVersion(ctx context.Context, _ *emptypb.Empty) (*pb.MasterDataGetLatestVersionResponse, error) {
@@ -38,21 +39,24 @@ func (s *DataServiceServer) GetUserDataNameV2(ctx context.Context, _ *emptypb.Em
 func (s *DataServiceServer) GetUserData(ctx context.Context, req *pb.UserDataGetRequest) (*pb.UserDataGetResponse, error) {
 	log.Printf("[DataService] GetUserData: tables=%v", req.TableName)
 
-	defaults := userdata.FirstEntranceUserDataJSONClientTables(mock.DefaultUserID)
-	result := make(map[string]string)
+	userID := currentUserID(ctx, s.store)
+	user, ok := s.store.SnapshotUser(userID)
+	if !ok {
+		user = s.store.EnsureUser("")
+	}
+	defaults := userdata.FirstEntranceClientTableMap(user)
+	result := userdata.SelectTables(defaults, req.TableName)
 
 	for _, table := range req.TableName {
-		if data, ok := defaults[table]; ok && data != "" {
+		if data, ok := result[table]; ok && data != "" && data != "[]" {
 			log.Printf("[DataService]   %s -> (len=%d)", table, len(data))
 			if table == "IUser" {
 				log.Printf("[DataService]   %s payload=%s", table, data)
 			}
-			result[table] = data
 		} else {
 			// Important: keep the key present with an empty JSON array.
 			// Client deserializes each value as List<object>.
 			log.Printf("[DataService]   %s -> []", table)
-			result[table] = "[]"
 		}
 	}
 
