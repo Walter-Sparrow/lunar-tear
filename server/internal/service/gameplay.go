@@ -9,7 +9,7 @@ import (
 )
 
 type GameplayServiceServer struct {
-	pb.UnimplementedGameplayServiceServer
+	pb.UnimplementedGamePlayServiceServer
 }
 
 func NewGameplayServiceServer() *GameplayServiceServer {

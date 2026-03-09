@@ -8,7 +8,7 @@ import "proto/data.proto";
 
 package apb.api.gameplay;
 
-service GameplayService {
+service GamePlayService {
 	rpc CheckBeforeGamePlay (CheckBeforeGamePlayRequest) returns (CheckBeforeGamePlayResponse);
 }
 

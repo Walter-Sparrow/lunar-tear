@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"strconv"
 
 	pb "lunar-tear/server/gen/proto"
@@ -16,11 +17,58 @@ import (
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/stats"
 )
 
 // loggingListener wraps a net.Listener and logs every accepted connection.
 type loggingListener struct {
 	net.Listener
+}
+
+type rpcStatsContextKey struct{}
+
+type gameplayStatsHandler struct{}
+
+func (gameplayStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) context.Context {
+	if info != nil {
+		ctx = context.WithValue(ctx, rpcStatsContextKey{}, info.FullMethodName)
+	}
+	return ctx
+}
+
+func (gameplayStatsHandler) HandleRPC(ctx context.Context, s stats.RPCStats) {
+	method, _ := ctx.Value(rpcStatsContextKey{}).(string)
+	if !strings.Contains(method, "CheckBeforeGamePlay") {
+		return
+	}
+
+	switch event := s.(type) {
+	case *stats.Begin:
+		log.Printf("[gRPC stats] BEGIN method=%s client=%v server=%v", method, event.Client, event.IsClient())
+	case *stats.InHeader:
+		log.Printf("[gRPC stats] IN_HEADER method=%s compression=%s wire=%d", method, event.Compression, event.WireLength)
+	case *stats.InPayload:
+		log.Printf("[gRPC stats] IN_PAYLOAD method=%s wire=%d len=%d recv=%v", method, event.WireLength, event.Length, event.RecvTime)
+	case *stats.OutHeader:
+		log.Printf("[gRPC stats] OUT_HEADER method=%s compression=%s", method, event.Compression)
+	case *stats.OutPayload:
+		log.Printf("[gRPC stats] OUT_PAYLOAD method=%s wire=%d len=%d", method, event.WireLength, event.Length)
+	case *stats.End:
+		log.Printf("[gRPC stats] END method=%s error=%v", method, event.Error)
+	}
+}
+
+func (gameplayStatsHandler) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context {
+	return ctx
+}
+
+func (gameplayStatsHandler) HandleConn(ctx context.Context, s stats.ConnStats) {
+	switch event := s.(type) {
+	case *stats.ConnBegin:
+		log.Printf("[gRPC stats] CONN_BEGIN client=%v", event.Client)
+	case *stats.ConnEnd:
+		log.Printf("[gRPC stats] CONN_END client=%v", event.Client)
+	}
 }
 
 func (l loggingListener) Accept() (net.Conn, error) {
@@ -93,13 +141,14 @@ func main() {
 
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(loggingInterceptor),
+		grpc.StatsHandler(gameplayStatsHandler{}),
 	)
 
 	pb.RegisterUserServiceServer(grpcServer, service.NewUserServiceServer())
 	pb.RegisterConfigServiceServer(grpcServer, service.NewConfigServiceServer(*host, int32(*grpcPort), octoURL))
 	pb.RegisterDataServiceServer(grpcServer, service.NewDataServiceServer())
 	pb.RegisterTutorialServiceServer(grpcServer, service.NewTutorialServiceServer())
-	pb.RegisterGameplayServiceServer(grpcServer, service.NewGameplayServiceServer())
+	pb.RegisterGamePlayServiceServer(grpcServer, service.NewGameplayServiceServer())
 	pb.RegisterQuestServiceServer(grpcServer, service.NewQuestServiceServer())
 	pb.RegisterNotificationServiceServer(grpcServer, service.NewNotificationServiceServer())
 

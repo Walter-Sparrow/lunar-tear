@@ -24,6 +24,15 @@ Reach the first playable/home flow with minimal client patching and a server-fir
   - graphic quality setting dialog
   - title `Completion`
   - `OnFinish`
+- Focused `OnFinish` tracing now proves the client constructs and serializes `CheckBeforeGamePlayRequest` successfully.
+- The post-`OnFinish` failure was not missing request bytes or protobuf shaping.
+- The client was receiving a real gRPC `RpcException`:
+  - `StatusCode = Unimplemented`
+  - `detail = "unknown service apb.api.gameplay.GamePlayService"`
+- Root cause: server-side service-name mismatch.
+  - Client calls `apb.api.gameplay.GamePlayService`
+  - Server had registered `apb.api.gameplay.GameplayService`
+- The gameplay proto and Go server registration have now been corrected to `GamePlayService`.
 
 ## What Was Proven About `GameStart`
 - The old immediate `GameStart` crash was inside `UserDiffUpdateInterceptor` while applying `DiffUserData`.
@@ -81,6 +90,12 @@ Reach the first playable/home flow with minimal client patching and a server-fir
 - `GameStart()` currently sends common-response trailers:
   - `x-apb-response-datetime`
   - `x-apb-update-user-data-names`
+- `CheckBeforeGamePlay` is implemented in `server/internal/service/gameplay.go`.
+- `server/proto/gameplay.proto` now declares `service GamePlayService`.
+- Regenerated Go gRPC bindings now advertise:
+  - `ServiceName: "apb.api.gameplay.GamePlayService"`
+  - full method `/apb.api.gameplay.GamePlayService/CheckBeforeGamePlay`
+- `server/cmd/lunar-tear/main.go` now registers `pb.RegisterGamePlayServiceServer(...)`.
 
 ## Current Boundary
 `GameStart` diff application is no longer the blocker.
@@ -93,29 +108,42 @@ What is now proven:
   - `OnComplete`
   - `Completion`
   - `OnFinish`
-- The process now crashes only after `OnFinish`, during the first post-title / outgame startup step.
+- `Title.OnFinish` issues `GamePlayService/CheckBeforeGamePlayAsync`.
+- The request is created, serialized, and wrapped in `ResponseContext` successfully.
+- The previously observed post-`OnFinish` failure was a server `Unimplemented` reply caused by the wrong gRPC service name.
+- That naming mismatch is now fixed; the next runtime run should reveal the first blocker after a successful `CheckBeforeGamePlay` dispatch.
 
 ## Current Concern
-The new blocker is no longer JSON shape or interceptor diff application.
+The active blocker is no longer JSON shape, diff application, or unknown request-body transport behavior.
 
-The likely issue is now the first post-title continuation after `Title.OnFinish`, not missing `GameStart` starter rows.
+The prior uncertainty about `CheckBeforeGamePlay` transport has been resolved:
+- the client did serialize the body
+- the server was responding with `Unimplemented`
+- the cause was service-name mismatch, not payload corruption
+
+The likely remaining issue is now the first continuation after a correctly handled `CheckBeforeGamePlay` call, not missing `GameStart` starter rows.
 
 Working hypothesis:
 - The currently trusted 14-table `GameStart` diff is sufficient to get through diff application and title completion.
-- The process still crashes after `Title.OnFinish -> UniTaskCompletionSource`, during the first outgame startup step that follows title completion.
-- The next investigation should focus on the post-`OnFinish` handoff rather than adding more `GameStart` tables.
+- With `GamePlayService` naming corrected, the next failure boundary will likely move forward into response handling or the next gameplay/outgame continuation.
+- The next investigation should stay focused on the post-`OnFinish` handoff rather than adding more `GameStart` tables.
 
 ## Active Instrumentation
-Primary script: `frida/hooks_userdata_focus.js`
+Primary scripts:
+- `frida/hooks_onfinish_handoff.js`
+- `frida/hooks_userdata_focus.js`
 
 Current useful probes:
 - title FSM progression
 - `GameStart` interceptor path
-- `MapField<string, DiffData>` enumeration
-- `DarkUserDataDatabaseBuilderAppendHelper.Diff(...)`
-- `EntityIUserProfile.ctor(dict)`
-- `MPDateTime.ConvertMPDateTime`
-- local player registration / title gates
+- post-`OnFinish` `CheckBeforeGamePlay` lifecycle
+- `RequestContext..ctor`
+- `ErrorHandlingInterceptor.SendAsync`
+- `ErrorHandlingInterceptor.ErrorHandling`
+- `ResponseContext<T>.WaitResponseAsync`
+- `AsyncUnaryCall<T>.get_ResponseAsync`
+- `CheckBeforeGamePlayRequest.CalculateSize`
+- `CheckBeforeGamePlayRequest.WriteTo`
 
 Notes:
 - `updatedUserData.updateMapCount` still stays `0` during these `GameStart` runs, but that is no longer the active blocker for the current full trusted `GameStart` diff.
@@ -142,10 +170,16 @@ Most relevant symbols / areas:
 - `Title.<OnRegistUserName>d__37.MoveNext`
 - `Title.<OnGraphicQualitySetting>d__39.MoveNext`
 - `Title.OnFinish`
+- `IGamePlayService.CheckBeforeGamePlayAsync`
+- `RequestContext..ctor`
+- `ErrorHandlingInterceptor.SendAsync`
+- `ErrorHandlingInterceptor.ErrorHandling`
+- `ResponseContext<T>.WaitResponseAsync`
 
 ## Immediate Next Step
-Instrument the first post-title continuation after `Title.OnFinish`.
+Run again with the fixed `GamePlayService` registration and capture the next `OnFinish` / gameplay handoff logs.
 
 Goal of that step:
-- identify the first gameplay/outgame method that runs after `Title.OnFinish -> UniTaskCompletionSource`
-- determine whether the crash is in `Gameplay.OnRunApplicationAsync`, `Gameplay.OnTitleAsync`, `Gameplay.OnMainStoryAsync`, or the first continuation they schedule
+- confirm `CheckBeforeGamePlay` no longer returns `Unimplemented`
+- determine whether `CheckBeforeGamePlayResponse` now materializes on the client
+- identify the next real blocker in `Gameplay.OnRunApplicationAsync`, `Gameplay.OnTitleAsync`, `Gameplay.OnMainStoryAsync`, or the first continuation they schedule
