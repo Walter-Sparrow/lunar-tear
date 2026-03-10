@@ -60,6 +60,14 @@ These are request-shape examples based on protobuf definitions plus observed liv
 
 They are examples of what the client sends, not prescriptions for how the server should behave.
 
+For the response side below, "should look like" means:
+
+- what the protobuf contract allows
+- what the client demonstrably reads locally from returned tables
+- what a minimally coherent response shape must include for the client to keep progressing
+
+It does not mean "copy the current server implementation."
+
 ### `GamePlayService.CheckBeforeGamePlay`
 
 Purpose:
@@ -83,6 +91,16 @@ Example:
 }
 ```
 
+Response contract example:
+
+```json
+{
+  "isExistUnreadPop": false,
+  "menuGachaBadgeInfo": [],
+  "diffUserData": {}
+}
+```
+
 ### `QuestService.UpdateMainFlowSceneProgress`
 
 Purpose:
@@ -101,6 +119,33 @@ Observed example pattern:
   "questSceneId": 9
 }
 ```
+
+Response contract example:
+
+```json
+{
+  "diffUserData": {
+    "IUserMainQuestFlowStatus": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    },
+    "IUserMainQuestMainFlowStatus": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    },
+    "IUserMainQuestProgressStatus": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    }
+  }
+}
+```
+
+Minimum client-facing responsibility:
+
+- return a coherent `diffUserData`
+- include whatever main-quest status rows are needed so local `Story` state can resolve current scene and flow type
+- keep the returned tables internally consistent with the target `questSceneId`
 
 ### `QuestService.UpdateMainQuestSceneProgress`
 
@@ -132,6 +177,46 @@ Observed example patterns:
   "questSceneId": 13
 }
 ```
+
+Response contract example:
+
+```json
+{
+  "diffUserData": {
+    "IUserQuest": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    },
+    "IUserQuestMission": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    },
+    "IUserMainQuestFlowStatus": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    },
+    "IUserMainQuestMainFlowStatus": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    },
+    "IUserMainQuestProgressStatus": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    }
+  }
+}
+```
+
+Minimum client-facing responsibility:
+
+- return `diffUserData`
+- include quest-local rows that the client immediately queries:
+  - `IUserQuest`
+  - `IUserQuestMission`
+  - main-quest status tables when local flow state changes
+- make the tuple-keyed rows resolvable for local lookups such as:
+  - `IUserQuest(userId, questId)`
+  - `IUserQuestMission(userId, questId, questMissionId)`
 
 ### `QuestService.StartMainQuest`
 
@@ -168,6 +253,30 @@ Notes:
 - In live logs for quest `2`, the client sent `isMainFlow=false`.
 - `userDeckNumber` is the deck slot chosen for the quest start.
 
+Response contract example:
+
+```json
+{
+  "battleDropReward": [],
+  "diffUserData": {
+    "IUserQuest": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    },
+    "IUserQuestMission": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    }
+  }
+}
+```
+
+Minimum client-facing responsibility:
+
+- acknowledge start with `battleDropReward` in the response shape, even if empty
+- return enough quest-state diff for the client to regard the quest as started
+- materialize local quest-mission rows if the client can query them immediately after start
+
 ### `QuestService.RestartMainQuest`
 
 Purpose:
@@ -185,6 +294,17 @@ Example:
 {
   "questId": 2,
   "isMainFlow": false
+}
+```
+
+Response contract example:
+
+```json
+{
+  "battleDropReward": [],
+  "battleBinary": "",
+  "deckNumber": 1,
+  "diffUserData": {}
 }
 ```
 
@@ -227,6 +347,55 @@ Notes:
 - `storySkipType=3` is the value repeatedly seen in observed finish requests.
 - The client constructs this request after local `Story.IsClearedQuestWithQuestId(playedQuestId)` checks.
 
+Response contract example:
+
+```json
+{
+  "dropReward": [],
+  "firstClearReward": [],
+  "missionClearReward": [],
+  "missionClearCompleteReward": [],
+  "autoOrbitResult": [],
+  "isBigWin": false,
+  "bigWinClearedQuestMissionIdList": [],
+  "replayFlowFirstClearReward": [],
+  "userStatusCampaignReward": [],
+  "autoOrbitReward": null,
+  "diffUserData": {
+    "IUserQuest": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    },
+    "IUserQuestMission": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    },
+    "IUserMainQuestFlowStatus": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    },
+    "IUserMainQuestMainFlowStatus": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    },
+    "IUserMainQuestProgressStatus": {
+      "updateRecordsJson": "[...]",
+      "deleteKeysJson": "[]"
+    }
+  }
+}
+```
+
+Minimum client-facing responsibility:
+
+- satisfy the protobuf response shape
+- return a coherent post-finish `diffUserData`
+- make local post-finish checks succeed for:
+  - cleared quest lookup
+  - quest-mission lookup
+  - main-quest status lookup
+- keep reward arrays and diff state mutually consistent if reward lists are populated
+
 ### `GimmickService.InitSequenceSchedule`
 
 Purpose:
@@ -238,6 +407,14 @@ Example:
 
 ```json
 {}
+```
+
+Response contract example:
+
+```json
+{
+  "diffUserData": {}
+}
 ```
 
 ### `TutorialService.SetTutorialProgress`
@@ -263,6 +440,15 @@ Observed example pattern:
 }
 ```
 
+Response contract example:
+
+```json
+{
+  "tutorialChoiceReward": [],
+  "diffUserData": {}
+}
+```
+
 ### `NotificationService.GetHeaderNotification`
 
 Purpose:
@@ -275,6 +461,92 @@ Example:
 ```json
 {}
 ```
+
+Response contract example:
+
+```json
+{
+  "giftNotReceiveCount": 0,
+  "friendRequestReceiveCount": 0,
+  "isExistUnreadInformation": false,
+  "diffUserData": {}
+}
+```
+
+## Server Responsibility In Quest Flow
+
+This section is phrased as client-contract responsibility, not as a statement about the current server code.
+
+### Core Responsibility
+
+The server is responsible for returning a user-data state that the client can use to rebuild its local quest/story model.
+
+That means:
+
+- respond with the protobuf shape expected by the called RPC
+- provide coherent `diffUserData` entries for all tables the client will immediately query next
+- keep returned rows internally consistent across quest, mission, and main-quest status tables
+
+### What The Client Obviously Depends On
+
+From dump symbols and probes, the client locally reads:
+
+- `IUserQuest`
+- `IUserQuestMission`
+- `IUserMainQuestFlowStatus`
+- `IUserMainQuestMainFlowStatus`
+- `IUserMainQuestProgressStatus`
+
+So when quest flow changes, server responsibility is not just "return OK".
+
+It is:
+
+- make those local rows resolvable by their client-side keys
+- make them describe one coherent state transition
+- avoid returning combinations that contradict each other
+
+### Per-RPC Responsibility Summary
+
+`UpdateMainFlowSceneProgress`
+
+- move main-flow scene state forward
+- refresh main-quest status tables coherently
+
+`UpdateMainQuestSceneProgress`
+
+- move in-quest scene state forward
+- refresh quest-local and main-quest-local tables coherently
+
+`StartMainQuest`
+
+- mark the quest as locally started
+- return enough quest state that follow-up local quest lookups succeed
+
+`FinishMainQuest`
+
+- mark the quest as locally finished/cleared in whatever way the client expects
+- return enough post-finish state that:
+  - `Story.IsClearedQuestWithQuestId`
+  - `UserQuestMission` lookup
+  - main-quest status lookup
+  can all proceed without contradiction
+
+`InitSequenceSchedule`, `SetTutorialProgress`, `GetHeaderNotification`, `CheckBeforeGamePlay`
+
+- satisfy adjacent client expectations around the quest loop
+- avoid blocking the next local branch by returning structurally invalid or contradictory state
+
+### What The Server Does Not Get To Delegate
+
+Even though the client performs local gating, the server is still responsible for providing the raw facts used by those local gates.
+
+In practice that means:
+
+- quest ordering comes from master data
+- scene ordering comes from master data
+- release conditions come from master data
+- mission membership and mission condition ids come from master data
+- per-user quest state must be returned in tables keyed exactly the way the client expects
 
 ## Story Methods Around Quest Progression
 
