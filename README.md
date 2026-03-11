@@ -155,3 +155,14 @@ make proto
 
 - Current trusted project status: `docs/PROGRESS.active.md`
 - Deprecated history: `docs/PROGRESS.md`
+
+## Current Working Workflow
+
+Current proven in-game flow:
+
+1. Game starts
+2. User enters name
+3. 2D story scene
+4. 3D story scene
+5. Trailer
+6. `"Showdown in the Wastes"` quest with battle
