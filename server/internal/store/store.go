@@ -242,8 +242,6 @@ type TutorialProgressState struct {
 }
 
 type MainQuestState struct {
-	ActiveQuestID            int32
-	ClearReadyQuestID        int32
 	CurrentQuestFlowType     int32
 	CurrentMainQuestRouteID  int32
 	CurrentQuestSceneID      int32
@@ -268,15 +266,25 @@ type BattleState struct {
 	LastElapsedFrameCount int64
 }
 
+type UserQuestStateType int32
+
+const (
+	UserQuestStateTypeUnknown UserQuestStateType = 0
+	UserQuestStateTypeActive  UserQuestStateType = 1
+	UserQuestStateTypeRunning UserQuestStateType = 2
+	UserQuestStateTypeCleared UserQuestStateType = 3
+)
+
 type UserQuestState struct {
 	QuestID             int32
-	QuestStateType      int32
+	QuestStateType      UserQuestStateType
 	IsBattleOnly        bool
 	LatestStartDatetime int64
 	ClearCount          int32
 	DailyClearCount     int32
 	LastClearDatetime   int64
 	ShortestClearFrames int32
+	IsRewardGranted     bool
 	LatestVersion       int64
 }
 

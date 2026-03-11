@@ -66,7 +66,7 @@ type EntityIUserQuest struct {
 type EntityIUserMainQuestFlowStatus struct {
 	_msgpack             struct{} `msgpack:",asArray"`
 	UserId               int64    // Key(0)
-	CurrentQuestFlowType int32    // Key(1)
+	CurrentQuestFlowType int32    // Key(1) // QuestFlowType: 0=UNKNOWN, 1=MAIN_FLOW, 2=SUB_FLOW, 3=REPLAY_FLOW, 4=ANOTHER_ROUTE_REPLAY_FLOW
 	LatestVersion        int64    // Key(2)
 }
 
@@ -88,7 +88,7 @@ type EntityIUserMainQuestProgressStatus struct {
 	UserId               int64    // Key(0)
 	CurrentQuestSceneId  int32    // Key(1)
 	HeadQuestSceneId     int32    // Key(2)
-	CurrentQuestFlowType int32    // Key(3) // 1 = MAIN_FLOW
+	CurrentQuestFlowType int32    // Key(3) // QuestFlowType: 0=UNKNOWN, 1=MAIN_FLOW, 2=SUB_FLOW, 3=REPLAY_FLOW, 4=ANOTHER_ROUTE_REPLAY_FLOW
 	LatestVersion        int64    // Key(4)
 }
 
@@ -342,7 +342,7 @@ func DefaultUserDataJSON(userID int64) map[string]string {
 		LatestVersion:         0,
 	})
 	mainQuestFlowJSON, _ := encodeJSONMaps(map[string]any{
-		"userId":               userID,
+		"userId": userID,
 		// Keep route progression seeded, but do not advertise an in-progress main quest.
 		"currentQuestFlowType": 0,
 		"latestVersion":        0,

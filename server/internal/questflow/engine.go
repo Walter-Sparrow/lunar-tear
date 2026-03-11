@@ -12,61 +12,37 @@ import (
 )
 
 const (
-	questSceneTypeStory      = int32(1)
-	questSceneTypeTransition = int32(2)
-	questSceneTypeBattle     = int32(3)
-	questStateTypeActive     = int32(1)
-	questStateTypeCleared    = int32(3)
+	possessionTypeCostume   = int32(1)
+	possessionTypeWeapon    = int32(2)
+	possessionTypeCompanion = int32(4)
+	possessionTypeFreeGem   = int32(12)
+	possessionTypeWeaponAlt = int32(13)
 )
 
-type SceneUpdateMode int
+type QuestFlowType int32
 
 const (
-	SceneUpdateModeMainFlow SceneUpdateMode = iota + 1
-	SceneUpdateModeQuestProgress
+	QuestFlowTypeUnknown                QuestFlowType = 0
+	QuestFlowTypeMainFlow               QuestFlowType = 1
+	QuestFlowTypeSubFlow                QuestFlowType = 2
+	QuestFlowTypeReplayFlow             QuestFlowType = 3
+	QuestFlowTypeAnotherRouteReplayFlow QuestFlowType = 4
 )
 
-func (m SceneUpdateMode) String() string {
-	switch m {
-	case SceneUpdateModeMainFlow:
-		return "main-flow"
-	case SceneUpdateModeQuestProgress:
-		return "quest-progress"
-	default:
-		return fmt.Sprintf("unknown-mode(%d)", int(m))
-	}
-}
-
-type ScenePhase int
-
-const (
-	ScenePhaseUnknown ScenePhase = iota
-	ScenePhaseBackground
-	ScenePhaseRunning
-	ScenePhaseTransition
-	ScenePhaseBattleEntry
-	ScenePhaseTerminal
-	ScenePhasePostClearTail
-)
-
-func (p ScenePhase) String() string {
-	switch p {
-	case ScenePhaseUnknown:
+func (t QuestFlowType) String() string {
+	switch t {
+	case QuestFlowTypeUnknown:
 		return "unknown"
-	case ScenePhaseBackground:
-		return "background"
-	case ScenePhaseRunning:
-		return "running"
-	case ScenePhaseTransition:
-		return "transition"
-	case ScenePhaseBattleEntry:
-		return "battle-entry"
-	case ScenePhaseTerminal:
-		return "terminal"
-	case ScenePhasePostClearTail:
-		return "post-clear-tail"
+	case QuestFlowTypeMainFlow:
+		return "main-flow"
+	case QuestFlowTypeSubFlow:
+		return "sub-flow"
+	case QuestFlowTypeReplayFlow:
+		return "replay-flow"
+	case QuestFlowTypeAnotherRouteReplayFlow:
+		return "another-route-replay-flow"
 	default:
-		return fmt.Sprintf("unknown-phase(%d)", int(p))
+		return fmt.Sprintf("unknown-quest-flow(%d)", int32(t))
 	}
 }
 
@@ -81,10 +57,16 @@ type sceneMasterRow struct {
 }
 
 type questMasterRow struct {
-	QuestID              int32 `json:"QuestId"`
-	QuestMissionGroupID  int32 `json:"QuestMissionGroupId"`
-	IsRunInTheBackground bool  `json:"IsRunInTheBackground"`
-	IsCountedAsQuest     bool  `json:"IsCountedAsQuest"`
+	QuestID                      int32 `json:"QuestId"`
+	QuestFirstClearRewardGroupID int32 `json:"QuestFirstClearRewardGroupId"`
+	QuestMissionGroupID          int32 `json:"QuestMissionGroupId"`
+	QuestReleaseConditionListID  int32 `json:"QuestReleaseConditionListId"`
+	UserExp                      int32 `json:"UserExp"`
+	CharacterExp                 int32 `json:"CharacterExp"`
+	CostumeExp                   int32 `json:"CostumeExp"`
+	Gold                         int32 `json:"Gold"`
+	IsRunInTheBackground         bool  `json:"IsRunInTheBackground"`
+	IsCountedAsQuest             bool  `json:"IsCountedAsQuest"`
 }
 
 type mainQuestSequenceRow struct {
@@ -99,25 +81,97 @@ type questMissionGroupRow struct {
 	QuestMissionID      int32 `json:"QuestMissionId"`
 }
 
-type SceneDescriptor struct {
-	SceneID           int32
-	QuestID           int32
-	PreviousQuestID   int32
-	NextQuestID       int32
-	MissionIDs        []int32
-	Phase             ScenePhase
-	IsCountedQuest    bool
-	IsBackgroundQuest bool
+type questMissionRow struct {
+	QuestMissionID                    int32 `json:"QuestMissionId"`
+	QuestMissionConditionType         int32 `json:"QuestMissionConditionType"`
+	QuestMissionRewardID              int32 `json:"QuestMissionRewardId"`
+	QuestMissionConditionValueGroupID int32 `json:"QuestMissionConditionValueGroupId"`
+}
+
+type questMissionRewardRow struct {
+	QuestMissionRewardID int32 `json:"QuestMissionRewardId"`
+	PossessionType       int32 `json:"PossessionType"`
+	PossessionID         int32 `json:"PossessionId"`
+	Count                int32 `json:"Count"`
+}
+
+type questFirstClearRewardGroupRow struct {
+	QuestFirstClearRewardGroupID int32 `json:"QuestFirstClearRewardGroupId"`
+	QuestFirstClearRewardType    int32 `json:"QuestFirstClearRewardType"`
+	SortOrder                    int32 `json:"SortOrder"`
+	PossessionType               int32 `json:"PossessionType"`
+	PossessionID                 int32 `json:"PossessionId"`
+	Count                        int32 `json:"Count"`
+	IsPickup                     bool  `json:"IsPickup"`
+}
+
+type questRelationMainFlowRow struct {
+	MainFlowQuestID   int32 `json:"MainFlowQuestId"`
+	DifficultyType    int32 `json:"DifficultyType"`
+	ReplayFlowQuestID int32 `json:"ReplayFlowQuestId"`
+	SubFlowQuestID    int32 `json:"SubFlowQuestId"`
+}
+
+type questReleaseConditionListRow struct {
+	QuestReleaseConditionListID  int32 `json:"QuestReleaseConditionListId"`
+	QuestReleaseConditionGroupID int32 `json:"QuestReleaseConditionGroupId"`
+	ConditionOperationType       int32 `json:"ConditionOperationType"`
+}
+
+type questReleaseConditionGroupRow struct {
+	QuestReleaseConditionGroupID int32 `json:"QuestReleaseConditionGroupId"`
+	SortOrder                    int32 `json:"SortOrder"`
+	QuestReleaseConditionType    int32 `json:"QuestReleaseConditionType"`
+	QuestReleaseConditionID      int32 `json:"QuestReleaseConditionId"`
+}
+
+type questReleaseConditionQuestClearRow struct {
+	QuestReleaseConditionID int32 `json:"QuestReleaseConditionId"`
+	QuestID                 int32 `json:"QuestId"`
+}
+
+type questFirstClearRewardSwitchRow struct {
+	QuestID                      int32 `json:"QuestId"`
+	QuestFirstClearRewardGroupID int32 `json:"QuestFirstClearRewardGroupId"`
+	SwitchConditionClearQuestID  int32 `json:"SwitchConditionClearQuestId"`
+}
+
+type mainQuestChapterRow struct {
+	MainQuestChapterID       int32 `json:"MainQuestChapterId"`
+	MainQuestRouteID         int32 `json:"MainQuestRouteId"`
+	SortOrder                int32 `json:"SortOrder"`
+	MainQuestSequenceGroupID int32 `json:"MainQuestSequenceGroupId"`
+}
+
+type RewardGrant struct {
+	PossessionType int32
+	PossessionID   int32
+	Count          int32
+}
+
+type FinishOutcome struct {
+	FirstClearRewards            []RewardGrant
+	MissionClearRewards          []RewardGrant
+	MissionClearCompleteRewards  []RewardGrant
+	BigWinClearedQuestMissionIDs []int32
+	IsBigWin                     bool
 }
 
 type Engine struct {
-	sceneByID             map[int32]sceneMasterRow
-	questByID             map[int32]questMasterRow
-	previousQuestByID     map[int32]int32
-	nextQuestByID         map[int32]int32
-	missionIDsByQuestID   map[int32][]int32
-	firstTerminalSortByID map[int32]int32
-	lastSceneSortByID     map[int32]int32
+	sceneByID                         map[int32]sceneMasterRow
+	questByID                         map[int32]questMasterRow
+	questMissionByID                  map[int32]questMissionRow
+	mainFlowQuestByQuestID            map[int32]int32
+	releaseClearQuestIDsByQuestID     map[int32][]int32
+	routeIDByQuestID                  map[int32]int32
+	previousQuestByID                 map[int32]int32
+	nextQuestByID                     map[int32]int32
+	missionIDsByQuestID               map[int32][]int32
+	firstClearRewardsByGroupID        map[int32][]questFirstClearRewardGroupRow
+	firstClearRewardSwitchesByQuestID map[int32][]questFirstClearRewardSwitchRow
+	questMissionRewardsByID           map[int32][]questMissionRewardRow
+	terminalSceneIDs                  map[int32]struct{}
+	lastMainFlowSceneByQuest          map[int32]int32
 }
 
 func MustLoad() *Engine {
@@ -137,30 +191,89 @@ func MustLoad() *Engine {
 	if err != nil {
 		panic(err)
 	}
+	questMissions, err := readJSON[questMissionRow]("EntityMQuestMissionTable.json")
+	if err != nil {
+		panic(err)
+	}
+	questMissionRewards, err := readJSON[questMissionRewardRow]("EntityMQuestMissionRewardTable.json")
+	if err != nil {
+		panic(err)
+	}
+	firstClearRewardGroups, err := readJSON[questFirstClearRewardGroupRow]("EntityMQuestFirstClearRewardGroupTable.json")
+	if err != nil {
+		panic(err)
+	}
+	questRelations, err := readJSON[questRelationMainFlowRow]("EntityMQuestRelationMainFlowTable.json")
+	if err != nil {
+		panic(err)
+	}
+	releaseConditionLists, err := readJSON[questReleaseConditionListRow]("EntityMQuestReleaseConditionListTable.json")
+	if err != nil {
+		panic(err)
+	}
+	releaseConditionGroups, err := readJSON[questReleaseConditionGroupRow]("EntityMQuestReleaseConditionGroupTable.json")
+	if err != nil {
+		panic(err)
+	}
+	releaseConditionQuestClears, err := readJSON[questReleaseConditionQuestClearRow]("EntityMQuestReleaseConditionQuestClearTable.json")
+	if err != nil {
+		panic(err)
+	}
+	firstClearRewardSwitches, err := readJSON[questFirstClearRewardSwitchRow]("EntityMQuestFirstClearRewardSwitchTable.json")
+	if err != nil {
+		panic(err)
+	}
+	mainQuestChapters, err := readJSON[mainQuestChapterRow]("EntityMMainQuestChapterTable.json")
+	if err != nil {
+		panic(err)
+	}
 
 	engine := &Engine{
-		sceneByID:             make(map[int32]sceneMasterRow, len(scenes)),
-		questByID:             make(map[int32]questMasterRow, len(quests)),
-		previousQuestByID:     make(map[int32]int32),
-		nextQuestByID:         make(map[int32]int32),
-		missionIDsByQuestID:   make(map[int32][]int32),
-		firstTerminalSortByID: make(map[int32]int32),
-		lastSceneSortByID:     make(map[int32]int32),
+		sceneByID:                         make(map[int32]sceneMasterRow, len(scenes)),
+		questByID:                         make(map[int32]questMasterRow, len(quests)),
+		questMissionByID:                  make(map[int32]questMissionRow, len(questMissions)),
+		mainFlowQuestByQuestID:            make(map[int32]int32),
+		releaseClearQuestIDsByQuestID:     make(map[int32][]int32),
+		routeIDByQuestID:                  make(map[int32]int32),
+		previousQuestByID:                 make(map[int32]int32),
+		nextQuestByID:                     make(map[int32]int32),
+		missionIDsByQuestID:               make(map[int32][]int32),
+		firstClearRewardsByGroupID:        make(map[int32][]questFirstClearRewardGroupRow),
+		firstClearRewardSwitchesByQuestID: make(map[int32][]questFirstClearRewardSwitchRow),
+		questMissionRewardsByID:           make(map[int32][]questMissionRewardRow),
+		terminalSceneIDs:                  make(map[int32]struct{}),
+		lastMainFlowSceneByQuest:          make(map[int32]int32),
 	}
+
 	for _, scene := range scenes {
 		engine.sceneByID[scene.QuestSceneID] = scene
-		if scene.SortOrder > engine.lastSceneSortByID[scene.QuestID] {
-			engine.lastSceneSortByID[scene.QuestID] = scene.SortOrder
-		}
 		if scene.QuestResultType == 2 || scene.QuestResultType == 3 {
-			current, ok := engine.firstTerminalSortByID[scene.QuestID]
-			if !ok || scene.SortOrder < current {
-				engine.firstTerminalSortByID[scene.QuestID] = scene.SortOrder
+			engine.terminalSceneIDs[scene.QuestSceneID] = struct{}{}
+		}
+		if scene.IsMainFlowQuestTarget {
+			if existingSceneID, ok := engine.lastMainFlowSceneByQuest[scene.QuestID]; !ok || scene.SortOrder > engine.sceneByID[existingSceneID].SortOrder {
+				engine.lastMainFlowSceneByQuest[scene.QuestID] = scene.QuestSceneID
 			}
 		}
 	}
+
 	for _, quest := range quests {
 		engine.questByID[quest.QuestID] = quest
+	}
+	for _, relation := range questRelations {
+		if relation.DifficultyType != 1 {
+			continue
+		}
+		engine.mainFlowQuestByQuestID[relation.MainFlowQuestID] = relation.MainFlowQuestID
+		if relation.SubFlowQuestID != 0 {
+			engine.mainFlowQuestByQuestID[relation.SubFlowQuestID] = relation.MainFlowQuestID
+		}
+		if relation.ReplayFlowQuestID != 0 {
+			engine.mainFlowQuestByQuestID[relation.ReplayFlowQuestID] = relation.MainFlowQuestID
+		}
+	}
+	for _, mission := range questMissions {
+		engine.questMissionByID[mission.QuestMissionID] = mission
 	}
 
 	sort.Slice(sequences, func(i, j int) bool {
@@ -175,6 +288,15 @@ func MustLoad() *Engine {
 	for i := 0; i+1 < len(sequences); i++ {
 		engine.nextQuestByID[sequences[i].QuestID] = sequences[i+1].QuestID
 		engine.previousQuestByID[sequences[i+1].QuestID] = sequences[i].QuestID
+	}
+	chapterBySequenceID := make(map[int32]mainQuestChapterRow, len(mainQuestChapters))
+	for _, row := range mainQuestChapters {
+		chapterBySequenceID[row.MainQuestSequenceGroupID] = row
+	}
+	for _, row := range sequences {
+		if chapter, ok := chapterBySequenceID[row.MainQuestSequenceID]; ok {
+			engine.routeIDByQuestID[row.QuestID] = chapter.MainQuestRouteID
+		}
 	}
 
 	sort.Slice(questMissionGroups, func(i, j int) bool {
@@ -196,6 +318,53 @@ func MustLoad() *Engine {
 			continue
 		}
 		engine.missionIDsByQuestID[questID] = append([]int32(nil), missionIDs...)
+	}
+	sort.Slice(firstClearRewardGroups, func(i, j int) bool {
+		if firstClearRewardGroups[i].QuestFirstClearRewardGroupID != firstClearRewardGroups[j].QuestFirstClearRewardGroupID {
+			return firstClearRewardGroups[i].QuestFirstClearRewardGroupID < firstClearRewardGroups[j].QuestFirstClearRewardGroupID
+		}
+		if firstClearRewardGroups[i].QuestFirstClearRewardType != firstClearRewardGroups[j].QuestFirstClearRewardType {
+			return firstClearRewardGroups[i].QuestFirstClearRewardType < firstClearRewardGroups[j].QuestFirstClearRewardType
+		}
+		return firstClearRewardGroups[i].SortOrder < firstClearRewardGroups[j].SortOrder
+	})
+	for _, row := range firstClearRewardGroups {
+		engine.firstClearRewardsByGroupID[row.QuestFirstClearRewardGroupID] = append(engine.firstClearRewardsByGroupID[row.QuestFirstClearRewardGroupID], row)
+	}
+	for _, row := range questMissionRewards {
+		engine.questMissionRewardsByID[row.QuestMissionRewardID] = append(engine.questMissionRewardsByID[row.QuestMissionRewardID], row)
+	}
+	for _, row := range firstClearRewardSwitches {
+		engine.firstClearRewardSwitchesByQuestID[row.QuestID] = append(engine.firstClearRewardSwitchesByQuestID[row.QuestID], row)
+	}
+	clearQuestIDByReleaseConditionID := make(map[int32]int32, len(releaseConditionQuestClears))
+	for _, row := range releaseConditionQuestClears {
+		clearQuestIDByReleaseConditionID[row.QuestReleaseConditionID] = row.QuestID
+	}
+	clearQuestIDsByGroupID := make(map[int32][]int32)
+	for _, row := range releaseConditionGroups {
+		if row.QuestReleaseConditionType != 4 {
+			continue
+		}
+		clearQuestID, ok := clearQuestIDByReleaseConditionID[row.QuestReleaseConditionID]
+		if !ok {
+			continue
+		}
+		clearQuestIDsByGroupID[row.QuestReleaseConditionGroupID] = append(clearQuestIDsByGroupID[row.QuestReleaseConditionGroupID], clearQuestID)
+	}
+	clearQuestIDsByListID := make(map[int32][]int32)
+	for _, row := range releaseConditionLists {
+		clearQuestIDsByListID[row.QuestReleaseConditionListID] = append(clearQuestIDsByListID[row.QuestReleaseConditionListID], clearQuestIDsByGroupID[row.QuestReleaseConditionGroupID]...)
+	}
+	for questID, quest := range engine.questByID {
+		if quest.QuestReleaseConditionListID == 0 {
+			continue
+		}
+		clearQuestIDs := clearQuestIDsByListID[quest.QuestReleaseConditionListID]
+		if len(clearQuestIDs) == 0 {
+			continue
+		}
+		engine.releaseClearQuestIDsByQuestID[questID] = append([]int32(nil), clearQuestIDs...)
 	}
 
 	return engine
@@ -219,197 +388,17 @@ func (e *Engine) ApplyBootstrap(user *store.UserState, profile store.BootstrapPr
 	case "", store.BootstrapProfileFresh:
 		return
 	case store.BootstrapProfileMainQuestScene9:
-		e.ApplySceneTransition(user, 9, SceneUpdateModeMainFlow, nowMillis)
+		e.HandleMainFlowSceneProgress(user, 9, nowMillis)
 	default:
 		panic(fmt.Sprintf("unknown bootstrap profile %q", profile))
 	}
 }
 
-func (e *Engine) DescribeScene(sceneID int32) (SceneDescriptor, bool) {
-	if e == nil {
-		log.Printf("[QuestFlow] not-implemented quest transition: sceneId=%d reason=nil-engine", sceneID)
-		return SceneDescriptor{}, false
+func (e *Engine) mainFlowQuestID(questID int32) int32 {
+	if mainFlowQuestID, ok := e.mainFlowQuestByQuestID[questID]; ok && mainFlowQuestID != 0 {
+		return mainFlowQuestID
 	}
-	scene, ok := e.sceneByID[sceneID]
-	if !ok {
-		log.Printf("[QuestFlow] unknown quest transition: sceneId=%d reason=missing-scene-master-row", sceneID)
-		return SceneDescriptor{}, false
-	}
-	quest, ok := e.questByID[scene.QuestID]
-	if !ok {
-		log.Printf("[QuestFlow] unknown quest transition: sceneId=%d questId=%d reason=missing-quest-master-row", sceneID, scene.QuestID)
-		return SceneDescriptor{}, false
-	}
-	descriptor := SceneDescriptor{
-		SceneID:           scene.QuestSceneID,
-		QuestID:           scene.QuestID,
-		PreviousQuestID:   e.previousQuestByID[scene.QuestID],
-		NextQuestID:       e.nextQuestByID[scene.QuestID],
-		MissionIDs:        append([]int32(nil), e.missionIDsByQuestID[scene.QuestID]...),
-		IsCountedQuest:    quest.IsCountedAsQuest,
-		IsBackgroundQuest: quest.IsRunInTheBackground || !quest.IsCountedAsQuest,
-		Phase:             ScenePhaseUnknown,
-	}
-
-	switch {
-	case isPostClearTail(e.firstTerminalSortByID[scene.QuestID], scene):
-		descriptor.Phase = ScenePhasePostClearTail
-	case scene.QuestResultType == 2 || scene.QuestResultType == 3:
-		descriptor.Phase = ScenePhaseTerminal
-	case descriptor.IsBackgroundQuest && scene.SortOrder == e.lastSceneSortByID[scene.QuestID]:
-		descriptor.Phase = ScenePhaseTerminal
-	case scene.IsBattleOnlyTarget || scene.QuestSceneType == questSceneTypeBattle:
-		descriptor.Phase = ScenePhaseBattleEntry
-	case scene.QuestSceneType != questSceneTypeStory:
-		descriptor.Phase = ScenePhaseTransition
-	case descriptor.IsBackgroundQuest || !scene.IsMainFlowQuestTarget:
-		descriptor.Phase = ScenePhaseRunning
-	default:
-		descriptor.Phase = ScenePhaseTransition
-	}
-
-	return descriptor, true
-}
-
-func isPostClearTail(firstTerminalSort int32, scene sceneMasterRow) bool {
-	return firstTerminalSort != 0 && scene.SortOrder > firstTerminalSort
-}
-
-func (e *Engine) ApplySceneTransition(user *store.UserState, sceneID int32, mode SceneUpdateMode, nowMillis int64) (SceneDescriptor, bool) {
-	descriptor, ok := e.DescribeScene(sceneID)
-	if !ok {
-		log.Printf("[QuestFlow] not-implemented quest transition: sceneId=%d mode=%s", sceneID, mode.String())
-		return SceneDescriptor{}, false
-	}
-	if descriptor.Phase == ScenePhaseUnknown {
-		log.Printf("[QuestFlow] unknown quest transition: sceneId=%d questId=%d mode=%s phase=%s", sceneID, descriptor.QuestID, mode.String(), descriptor.Phase.String())
-	}
-
-	e.ensureQuestVisible(user, descriptor.QuestID, true, nowMillis)
-	e.reconcileQuestHandoff(user, descriptor, nowMillis)
-
-	user.MainQuest.CurrentQuestSceneID = sceneID
-	user.MainQuest.HeadQuestSceneID = sceneID
-	user.MainQuest.ActiveQuestID = descriptor.QuestID
-
-	if descriptor.Phase == ScenePhaseTerminal {
-		if !descriptor.IsBackgroundQuest {
-			e.markQuestCleared(user, descriptor.QuestID, nowMillis)
-		}
-		user.MainQuest.ClearReadyQuestID = descriptor.QuestID
-		if descriptor.NextQuestID != 0 {
-			e.ensureQuestVisible(user, descriptor.NextQuestID, false, nowMillis)
-		}
-	} else if descriptor.Phase != ScenePhasePostClearTail {
-		user.MainQuest.ClearReadyQuestID = 0
-	}
-
-	activeFlow := false
-	reachedLast := false
-	switch mode {
-	case SceneUpdateModeMainFlow:
-		activeFlow = descriptor.Phase == ScenePhaseRunning || descriptor.Phase == ScenePhaseTransition
-		reachedLast = !activeFlow
-	case SceneUpdateModeQuestProgress:
-		activeFlow = descriptor.Phase == ScenePhaseRunning || (descriptor.Phase == ScenePhaseTerminal && !descriptor.IsBackgroundQuest)
-		reachedLast = descriptor.Phase == ScenePhaseTerminal || !activeFlow
-	}
-
-	user.MainQuest.IsReachedLastQuestScene = reachedLast
-	if activeFlow {
-		user.MainQuest.CurrentQuestFlowType = 1
-		user.MainQuest.ProgressQuestSceneID = sceneID
-		user.MainQuest.ProgressHeadQuestSceneID = sceneID
-		user.MainQuest.ProgressQuestFlowType = 1
-	} else {
-		user.MainQuest.CurrentQuestFlowType = 0
-		user.MainQuest.ProgressQuestSceneID = 0
-		user.MainQuest.ProgressHeadQuestSceneID = 0
-		user.MainQuest.ProgressQuestFlowType = 0
-	}
-
-	return descriptor, true
-}
-
-func (e *Engine) ApplyQuestStart(user *store.UserState, questID int32, isBattleOnly bool, nowMillis int64) {
-	questMeta, ok := e.questByID[questID]
-	if !ok {
-		log.Printf("[QuestFlow] unknown quest transition: start questId=%d reason=missing-quest-master-row", questID)
-	}
-	descriptor := SceneDescriptor{
-		QuestID:           questID,
-		PreviousQuestID:   e.previousQuestByID[questID],
-		IsCountedQuest:    questMeta.IsCountedAsQuest,
-		IsBackgroundQuest: questMeta.IsRunInTheBackground || !questMeta.IsCountedAsQuest,
-	}
-	e.ensureQuestVisible(user, questID, true, nowMillis)
-	e.reconcileQuestHandoff(user, descriptor, nowMillis)
-
-	quest := user.Quests[questID]
-	quest.QuestID = questID
-	quest.IsBattleOnly = isBattleOnly
-	quest.QuestStateType = questStateTypeActive
-	quest.LatestStartDatetime = nowMillis
-	user.Quests[questID] = quest
-	user.MainQuest.ActiveQuestID = questID
-}
-
-func (e *Engine) ApplyQuestFinish(user *store.UserState, questID int32, isMainFlow bool, nowMillis int64) {
-	switch clearReadyQuestID := user.MainQuest.ClearReadyQuestID; {
-	case clearReadyQuestID == 0:
-		log.Printf("[QuestFlow] not-implemented quest transition: finish questId=%d reason=missing-clear-ready currentSceneId=%d activeQuestId=%d",
-			questID, user.MainQuest.CurrentQuestSceneID, user.MainQuest.ActiveQuestID)
-	case clearReadyQuestID != questID:
-		log.Printf("[QuestFlow] unknown quest transition: finish questId=%d clearReadyQuestId=%d currentSceneId=%d activeQuestId=%d",
-			questID, clearReadyQuestID, user.MainQuest.CurrentQuestSceneID, user.MainQuest.ActiveQuestID)
-	}
-
-	e.ensureQuestVisible(user, questID, true, nowMillis)
-
-	e.markQuestCleared(user, questID, nowMillis)
-
-	if isMainFlow {
-		if nextQuestID, ok := e.nextQuestByID[questID]; ok && nextQuestID != 0 {
-			e.ensureQuestVisible(user, nextQuestID, false, nowMillis)
-		} else {
-			log.Printf("[QuestFlow] not-implemented quest transition: finish questId=%d reason=missing-next-main-quest", questID)
-		}
-	}
-
-	if user.MainQuest.ActiveQuestID == questID {
-		user.MainQuest.ActiveQuestID = 0
-	}
-	if user.MainQuest.ClearReadyQuestID == questID {
-		user.MainQuest.ClearReadyQuestID = 0
-	}
-	user.MainQuest.IsReachedLastQuestScene = true
-	user.MainQuest.CurrentQuestFlowType = 0
-	user.MainQuest.ProgressQuestSceneID = 0
-	user.MainQuest.ProgressHeadQuestSceneID = 0
-	user.MainQuest.ProgressQuestFlowType = 0
-}
-
-func (e *Engine) reconcileQuestHandoff(user *store.UserState, descriptor SceneDescriptor, nowMillis int64) {
-	if descriptor.QuestID == 0 || !descriptor.IsCountedQuest {
-		return
-	}
-	previousQuestID := descriptor.PreviousQuestID
-	if previousQuestID == 0 {
-		return
-	}
-	previousQuest, ok := e.questByID[previousQuestID]
-	if !ok {
-		return
-	}
-	if !previousQuest.IsRunInTheBackground && previousQuest.IsCountedAsQuest {
-		return
-	}
-
-	row := user.Quests[previousQuestID]
-	if row.QuestStateType == questStateTypeCleared {
-		return
-	}
-	e.markQuestCleared(user, previousQuestID, nowMillis)
+	return questID
 }
 
 func (e *Engine) ensureQuestVisible(user *store.UserState, questID int32, active bool, nowMillis int64) {
@@ -419,7 +408,7 @@ func (e *Engine) ensureQuestVisible(user *store.UserState, questID int32, active
 	quest := user.Quests[questID]
 	quest.QuestID = questID
 	if active && quest.QuestStateType == 0 {
-		quest.QuestStateType = questStateTypeActive
+		quest.QuestStateType = store.UserQuestStateTypeActive
 	}
 	if active && quest.LatestStartDatetime == 0 {
 		quest.LatestStartDatetime = nowMillis
@@ -435,10 +424,11 @@ func (e *Engine) ensureQuestVisible(user *store.UserState, questID int32, active
 	}
 }
 
-func (e *Engine) markQuestCleared(user *store.UserState, questID int32, nowMillis int64) {
+func (e *Engine) materializeQuestClearState(user *store.UserState, questID int32, grantRewards bool, nowMillis int64) {
 	quest := user.Quests[questID]
+	grantFirstClearRewards := grantRewards && !quest.IsRewardGranted
 	quest.QuestID = questID
-	quest.QuestStateType = questStateTypeCleared
+	quest.QuestStateType = store.UserQuestStateTypeCleared
 	quest.IsBattleOnly = false
 	if quest.LatestStartDatetime == 0 {
 		quest.LatestStartDatetime = nowMillis
@@ -455,5 +445,437 @@ func (e *Engine) markQuestCleared(user *store.UserState, questID int32, nowMilli
 	if quest.ShortestClearFrames == 0 {
 		quest.ShortestClearFrames = 600
 	}
+	if grantFirstClearRewards {
+		quest.IsRewardGranted = true
+	}
 	user.Quests[questID] = quest
+
+	// Clear missions
+	for _, questMissionID := range e.missionIDsByQuestID[questID] {
+		key := store.QuestMissionKey{QuestID: questID, QuestMissionID: questMissionID}
+		mission := user.QuestMissions[key]
+		mission.QuestID = questID
+		mission.QuestMissionID = questMissionID
+
+		missionMaster, ok := e.questMissionByID[questMissionID]
+		if !ok {
+			user.QuestMissions[key] = mission
+			continue
+		}
+		// Auto-clear non-9999 missions (server auto-completes since we skip real battle)
+		if missionMaster.QuestMissionConditionType != 9999 {
+			if !mission.IsClear {
+				mission.IsClear = true
+				mission.ProgressValue = 1
+				mission.LatestClearDatetime = nowMillis
+			}
+		}
+		user.QuestMissions[key] = mission
+	}
+
+	// Now check if all non-9999 missions are cleared -> auto-clear 9999 (COMPLETE)
+	allNonCompleteCleared := true
+	for _, questMissionID := range e.missionIDsByQuestID[questID] {
+		missionMaster, ok := e.questMissionByID[questMissionID]
+		if !ok || missionMaster.QuestMissionConditionType == 9999 {
+			continue
+		}
+		key := store.QuestMissionKey{QuestID: questID, QuestMissionID: questMissionID}
+		if !user.QuestMissions[key].IsClear {
+			allNonCompleteCleared = false
+			break
+		}
+	}
+	if allNonCompleteCleared {
+		for _, questMissionID := range e.missionIDsByQuestID[questID] {
+			missionMaster, ok := e.questMissionByID[questMissionID]
+			if !ok || missionMaster.QuestMissionConditionType != 9999 {
+				continue
+			}
+			key := store.QuestMissionKey{QuestID: questID, QuestMissionID: questMissionID}
+			m := user.QuestMissions[key]
+			if !m.IsClear {
+				m.IsClear = true
+				m.ProgressValue = 1
+				m.LatestClearDatetime = nowMillis
+				user.QuestMissions[key] = m
+			}
+		}
+	}
+
+	if grantFirstClearRewards {
+		e.applyQuestRewards(user, questID, nowMillis)
+	}
+}
+
+func (e *Engine) unlockReleasedQuests(user *store.UserState, clearedQuestID int32, nowMillis int64) bool {
+	unlockedAny := false
+	for questID, requiredClearQuestIDs := range e.releaseClearQuestIDsByQuestID {
+		if len(requiredClearQuestIDs) == 0 {
+			continue
+		}
+		allCleared := true
+		for _, requiredQuestID := range requiredClearQuestIDs {
+			if !e.isQuestCleared(user, requiredQuestID) {
+				allCleared = false
+				break
+			}
+		}
+		if !allCleared {
+			continue
+		}
+		e.ensureQuestVisible(user, questID, false, nowMillis)
+		unlockedAny = true
+	}
+	return unlockedAny
+}
+
+func (e *Engine) isQuestCleared(user *store.UserState, questID int32) bool {
+	if quest, ok := user.Quests[questID]; ok && quest.QuestStateType == store.UserQuestStateTypeCleared {
+		return true
+	}
+	return false
+}
+
+func (e *Engine) effectiveFirstClearRewardGroupID(user *store.UserState, questMeta questMasterRow) int32 {
+	rewardGroupID := questMeta.QuestFirstClearRewardGroupID
+	for _, switchRow := range e.firstClearRewardSwitchesByQuestID[questMeta.QuestID] {
+		if e.isQuestCleared(user, switchRow.SwitchConditionClearQuestID) {
+			rewardGroupID = switchRow.QuestFirstClearRewardGroupID
+			break
+		}
+	}
+	return rewardGroupID
+}
+
+func (e *Engine) buildFinishOutcome(user *store.UserState, questID int32) FinishOutcome {
+	outcome := FinishOutcome{}
+	quest, ok := user.Quests[questID]
+	if !ok {
+		return outcome
+	}
+	questMeta, ok := e.questByID[questID]
+	if !ok {
+		return outcome
+	}
+
+	if !quest.IsRewardGranted {
+		rewardGroupID := e.effectiveFirstClearRewardGroupID(user, questMeta)
+		for _, reward := range e.firstClearRewardsByGroupID[rewardGroupID] {
+			outcome.FirstClearRewards = append(outcome.FirstClearRewards, RewardGrant{
+				PossessionType: reward.PossessionType,
+				PossessionID:   reward.PossessionID,
+				Count:          reward.Count,
+			})
+		}
+	}
+
+	// Mission clear rewards — include rewards for missions not yet cleared.
+	// materializeQuestClearState (called right after this) auto-clears all
+	// non-9999 missions, so every !IsClear mission is about to be cleared.
+	newlyClearedCount := 0
+	totalNon9999 := 0
+	for _, questMissionID := range e.missionIDsByQuestID[questID] {
+		missionMaster, ok := e.questMissionByID[questMissionID]
+		if !ok || missionMaster.QuestMissionConditionType == 9999 {
+			continue
+		}
+		totalNon9999++
+
+		key := store.QuestMissionKey{QuestID: questID, QuestMissionID: questMissionID}
+		mission := user.QuestMissions[key]
+
+		if !mission.IsClear {
+			newlyClearedCount++
+			outcome.MissionClearRewards = appendRewardRows(outcome.MissionClearRewards, e.questMissionRewardsByID[missionMaster.QuestMissionRewardID])
+		}
+	}
+
+	// Mission clear complete (9999) — all non-9999 missions will be cleared
+	// after materializeQuestClearState, so check if they are all either
+	// already cleared or about to be cleared (i.e. totalNon9999 == already + newly).
+	alreadyClearedCount := totalNon9999 - newlyClearedCount
+	allWillBeClear := totalNon9999 > 0 && (alreadyClearedCount+newlyClearedCount) == totalNon9999
+	if allWillBeClear {
+		for _, questMissionID := range e.missionIDsByQuestID[questID] {
+			missionMaster, ok := e.questMissionByID[questMissionID]
+			if !ok || missionMaster.QuestMissionConditionType != 9999 {
+				continue
+			}
+			key := store.QuestMissionKey{QuestID: questID, QuestMissionID: questMissionID}
+			if !user.QuestMissions[key].IsClear {
+				outcome.MissionClearCompleteRewards = appendRewardRows(outcome.MissionClearCompleteRewards, e.questMissionRewardsByID[missionMaster.QuestMissionRewardID])
+				outcome.BigWinClearedQuestMissionIDs = append(outcome.BigWinClearedQuestMissionIDs, questMissionID)
+			}
+		}
+		outcome.IsBigWin = len(outcome.BigWinClearedQuestMissionIDs) > 0
+	}
+
+	return outcome
+}
+
+func (e *Engine) applyQuestRewards(user *store.UserState, questID int32, nowMillis int64) {
+	questMeta, ok := e.questByID[questID]
+	if !ok {
+		return
+	}
+
+	user.Status.Exp += questMeta.UserExp
+
+	if questMeta.CharacterExp != 0 {
+		for id, row := range user.Characters {
+			row.Exp += questMeta.CharacterExp
+			user.Characters[id] = row
+		}
+	}
+
+	if questMeta.CostumeExp != 0 {
+		for key, row := range user.Costumes {
+			row.Exp += questMeta.CostumeExp
+			user.Costumes[key] = row
+		}
+	}
+
+	rewardGroupID := e.effectiveFirstClearRewardGroupID(user, questMeta)
+	for _, reward := range e.firstClearRewardsByGroupID[rewardGroupID] {
+		e.applyRewardPossession(user, reward.PossessionType, reward.PossessionID, reward.Count, nowMillis)
+	}
+}
+
+func (e *Engine) applyRewardPossession(user *store.UserState, possessionType, possessionID, count int32, nowMillis int64) {
+	switch possessionType {
+	case possessionTypeFreeGem:
+		user.Gem.FreeGem += count
+	case possessionTypeCostume:
+		e.grantCostume(user, possessionID, nowMillis)
+	case possessionTypeWeapon, possessionTypeWeaponAlt:
+		e.grantWeapon(user, possessionID, nowMillis)
+	case possessionTypeCompanion:
+		e.grantCompanion(user, possessionID, nowMillis)
+	default:
+		log.Printf("[QuestFlow] unsupported reward possession: type=%d id=%d count=%d", possessionType, possessionID, count)
+	}
+}
+
+func (e *Engine) grantCostume(user *store.UserState, costumeID int32, nowMillis int64) {
+	for _, row := range user.Costumes {
+		if row.CostumeID == costumeID {
+			return
+		}
+	}
+	key := fmt.Sprintf("reward-costume-%d", costumeID)
+	user.Costumes[key] = store.CostumeState{
+		UserCostumeUUID:     key,
+		CostumeID:           costumeID,
+		Level:               1,
+		Exp:                 0,
+		AcquisitionDatetime: nowMillis,
+	}
+}
+
+func (e *Engine) grantWeapon(user *store.UserState, weaponID int32, nowMillis int64) {
+	for _, row := range user.Weapons {
+		if row.WeaponID == weaponID {
+			return
+		}
+	}
+	key := fmt.Sprintf("reward-weapon-%d", weaponID)
+	user.Weapons[key] = store.WeaponState{
+		UserWeaponUUID:      key,
+		WeaponID:            weaponID,
+		Level:               1,
+		Exp:                 0,
+		AcquisitionDatetime: nowMillis,
+	}
+}
+
+func (e *Engine) grantCompanion(user *store.UserState, companionID int32, nowMillis int64) {
+	for _, row := range user.Companions {
+		if row.CompanionID == companionID {
+			return
+		}
+	}
+	key := fmt.Sprintf("reward-companion-%d", companionID)
+	user.Companions[key] = store.CompanionState{
+		UserCompanionUUID:   key,
+		CompanionID:         companionID,
+		Level:               1,
+		AcquisitionDatetime: nowMillis,
+	}
+}
+
+// HandleMainFlowSceneProgress updates MainFlowStatus and FlowStatus tables only
+func (e *Engine) HandleMainFlowSceneProgress(user *store.UserState, sceneID int32, nowMillis int64) {
+	scene, ok := e.sceneByID[sceneID]
+	if !ok {
+		log.Printf("[QuestFlow] HandleMainFlowSceneProgress: unknown sceneId=%d", sceneID)
+		return
+	}
+
+	// Ensure the scene's quest is visible (creates IUserQuest + IUserQuestMission rows)
+	e.ensureQuestVisible(user, scene.QuestID, false, nowMillis)
+
+	// Auto-clear previous background/non-counted quests that should be done
+	prevQuestID := e.previousQuestByID[e.mainFlowQuestID(scene.QuestID)]
+	if prevQuestID != 0 {
+		prevMeta, ok := e.questByID[prevQuestID]
+		if ok && (prevMeta.IsRunInTheBackground || !prevMeta.IsCountedAsQuest) {
+			prevRow := user.Quests[prevQuestID]
+			if prevRow.QuestStateType != store.UserQuestStateTypeCleared {
+				e.materializeQuestClearState(user, prevQuestID, false, nowMillis)
+			}
+		}
+	}
+
+	// Update IUserMainQuestMainFlowStatus fields
+	user.MainQuest.CurrentQuestSceneID = sceneID
+	if sceneID > user.MainQuest.HeadQuestSceneID {
+		user.MainQuest.HeadQuestSceneID = sceneID
+	}
+
+	// Update route from scene's quest
+	routeID := e.routeIDByQuestID[e.mainFlowQuestID(scene.QuestID)]
+	if routeID != 0 {
+		user.MainQuest.CurrentMainQuestRouteID = routeID
+	}
+
+	// Update IUserMainQuestFlowStatus
+	user.MainQuest.CurrentQuestFlowType = int32(QuestFlowTypeMainFlow)
+
+	// DO NOT touch ProgressStatus fields — that is HandleQuestSceneProgress's job
+}
+
+// HandleQuestSceneProgress updates ProgressStatus and FlowStatus tables, handles terminal scenes
+func (e *Engine) HandleQuestSceneProgress(user *store.UserState, sceneID int32, nowMillis int64) {
+	scene, ok := e.sceneByID[sceneID]
+	if !ok {
+		log.Printf("[QuestFlow] HandleQuestSceneProgress: unknown sceneId=%d", sceneID)
+		return
+	}
+
+	// Ensure quest row exists and is active
+	e.ensureQuestVisible(user, scene.QuestID, true, nowMillis)
+	quest := user.Quests[scene.QuestID]
+	if quest.QuestStateType != store.UserQuestStateTypeCleared {
+		quest.QuestStateType = store.UserQuestStateTypeActive
+	}
+	if quest.LatestStartDatetime == 0 {
+		quest.LatestStartDatetime = nowMillis
+	}
+	user.Quests[scene.QuestID] = quest
+
+	// Update IUserMainQuestProgressStatus fields
+	user.MainQuest.ProgressQuestSceneID = sceneID
+	if sceneID > user.MainQuest.ProgressHeadQuestSceneID {
+		user.MainQuest.ProgressHeadQuestSceneID = sceneID
+	}
+	user.MainQuest.ProgressQuestFlowType = int32(QuestFlowTypeSubFlow)
+
+	// Update IUserMainQuestFlowStatus
+	user.MainQuest.CurrentQuestFlowType = int32(QuestFlowTypeSubFlow)
+
+	// If this is a terminal scene, mark quest as cleared immediately
+	// (client reads IUserQuest.questStateType after scene progress to check IsClearedQuestWithQuestId)
+	if _, isTerminal := e.terminalSceneIDs[sceneID]; isTerminal {
+		e.materializeQuestClearState(user, scene.QuestID, false, nowMillis)
+	}
+
+	// DO NOT touch MainFlowStatus scene pointers — that is HandleMainFlowSceneProgress's job
+}
+
+// HandleQuestStart sets quest to active, creates mission rows
+func (e *Engine) HandleQuestStart(user *store.UserState, questID int32, isBattleOnly bool, nowMillis int64) {
+	// Ensure quest and mission rows exist
+	e.ensureQuestVisible(user, questID, true, nowMillis)
+
+	quest := user.Quests[questID]
+	quest.QuestID = questID
+	if quest.QuestStateType != store.UserQuestStateTypeCleared {
+		quest.QuestStateType = store.UserQuestStateTypeActive
+	}
+	quest.IsBattleOnly = isBattleOnly
+	quest.LatestStartDatetime = nowMillis
+	user.Quests[questID] = quest
+
+	// No MainFlowStatus or ProgressStatus changes — those are driven by scene progress RPCs
+}
+
+// HandleQuestFinish clears quest, grants rewards, resets progress status
+func (e *Engine) HandleQuestFinish(user *store.UserState, questID int32, isMainFlow bool, nowMillis int64) FinishOutcome {
+	e.ensureQuestVisible(user, questID, true, nowMillis)
+
+	// Compute rewards BEFORE mutating state (buildFinishOutcome reads current IsClear flags)
+	outcome := e.buildFinishOutcome(user, questID)
+
+	// Mark quest cleared + clear missions + grant rewards
+	e.materializeQuestClearState(user, questID, true, nowMillis)
+
+	// Unlock next quests via release conditions
+	mainFlowID := e.mainFlowQuestID(questID)
+	if !e.unlockReleasedQuests(user, questID, nowMillis) {
+		if nextQuestID, ok := e.nextQuestByID[mainFlowID]; ok && nextQuestID != 0 {
+			e.ensureQuestVisible(user, nextQuestID, false, nowMillis)
+		}
+	}
+
+	// Reset IUserMainQuestProgressStatus (quest is done, no in-quest progress)
+	user.MainQuest.ProgressQuestSceneID = 0
+	user.MainQuest.ProgressHeadQuestSceneID = 0
+	user.MainQuest.ProgressQuestFlowType = 0
+
+	// Reset IUserMainQuestFlowStatus
+	user.MainQuest.CurrentQuestFlowType = int32(QuestFlowTypeUnknown)
+
+	// Update isReachedLastQuestScene — only true if the current MainFlowStatus scene
+	// is the last main-flow-target scene for this quest
+	lastMainFlowScene := e.lastMainFlowSceneByQuest[mainFlowID]
+	user.MainQuest.IsReachedLastQuestScene = lastMainFlowScene != 0 &&
+		user.MainQuest.CurrentQuestSceneID >= lastMainFlowScene
+
+	return outcome
+}
+
+// HandleQuestRestart resets quest and mission progress for replay
+func (e *Engine) HandleQuestRestart(user *store.UserState, questID int32, nowMillis int64) {
+	quest := user.Quests[questID]
+	quest.QuestID = questID
+	quest.QuestStateType = store.UserQuestStateTypeActive
+	quest.IsBattleOnly = false
+	quest.LatestStartDatetime = nowMillis
+	user.Quests[questID] = quest
+
+	// Reset mission progress for this quest
+	for _, questMissionID := range e.missionIDsByQuestID[questID] {
+		key := store.QuestMissionKey{QuestID: questID, QuestMissionID: questMissionID}
+		m := user.QuestMissions[key]
+		m.QuestID = questID
+		m.QuestMissionID = questMissionID
+		m.IsClear = false
+		m.ProgressValue = 0
+		m.LatestClearDatetime = 0
+		user.QuestMissions[key] = m
+	}
+}
+
+func appendRewardRows(dst []RewardGrant, src []questMissionRewardRow) []RewardGrant {
+	for _, r := range src {
+		dst = append(dst, RewardGrant{
+			PossessionType: r.PossessionType,
+			PossessionID:   r.PossessionID,
+			Count:          r.Count,
+		})
+	}
+	return dst
+}
+
+func toRewardGrants(rows []questMissionRewardRow) []RewardGrant {
+	out := make([]RewardGrant, len(rows))
+	for i, r := range rows {
+		out[i] = RewardGrant{
+			PossessionType: r.PossessionType,
+			PossessionID:   r.PossessionID,
+			Count:          r.Count,
+		}
+	}
+	return out
 }

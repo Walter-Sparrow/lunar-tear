@@ -39,6 +39,20 @@ const OFFSETS = {
   storyCheckConfirmationQuestRestartWithSceneId: 0x27a4030,
   storyRestartQuestAsync: 0x27a4244,
   storyGetCurrentStoryHierarchy: 0x279d184,
+  storyGetCurrentGameplayStoryType: 0x279cbec,
+  storySetCurrentGameplayStoryType: 0x279cbf4,
+  storySetCurrentRouteId: 0x279ccf8,
+  storySetCurrentChapterId: 0x279cd08,
+  storySetCurrentQuestId: 0x279cd18,
+  storySetClearedCurrentQuestId: 0x279cd28,
+  storySetCurrentSceneId: 0x279cd3c,
+  storySetHeadSceneId: 0x279cd4c,
+  storySetQuestIsRunInTheBackground: 0x279cde8,
+  storyGetPrevGameplayStoryType: 0x279cd8c,
+  storySetPrevGameplayStoryType: 0x279cd94,
+  storyApplyClearedCurrentQuestId: 0x279e8ec,
+  storyApplyCurrentGameplayStoryType: 0x279f76c,
+  storyApplyClearedCurrentChapterIdAndQuestId: 0x279f814,
   storyIsClearedQuestWithQuestId: 0x279f784,
   storyIsNeedsPlaySubQuestWithQuestId: 0x27a5f2c,
   storyTryGetInProgressQuestId: 0x27a644c,
@@ -185,6 +199,19 @@ function storyTypeName(value) {
   return Object.prototype.hasOwnProperty.call(STORY_TYPE, value)
     ? STORY_TYPE[value]
     : `<unknown:${value}>`;
+}
+
+function storyInstanceStateSummary(self) {
+  if (!self || self.isNull()) return 'story=<null>';
+  return [
+    `currentGameplayStoryType=${readRawInt32(self, 0x54)}(${storyTypeName(readRawInt32(self, 0x54))})`,
+    `currentSeasonId=${readRawInt32(self, 0x5c)}`,
+    `currentChapterId=${readRawInt32(self, 0x64)}`,
+    `currentQuestId=${readRawInt32(self, 0x68)}`,
+    `currentSceneId=${readRawInt32(self, 0x70)}`,
+    `prevGameplayStoryType=${readRawInt32(self, 0x8c)}(${storyTypeName(readRawInt32(self, 0x8c))})`,
+    `latestUpdateSceneProgressStoryType=${readRawInt32(self, 0x140)}(${storyTypeName(readRawInt32(self, 0x140))})`,
+  ].join(' ');
 }
 
 function mapFieldCount(mapField) {
@@ -502,6 +529,152 @@ awaitLibil2cpp(() => {
     },
   });
 
+  hook('Story.get_CurrentGameplayStoryType', OFFSETS.storyGetCurrentGameplayStoryType, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      this.shouldLog = true;
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.get_CurrentGameplayStoryType self=${pointerSummary(args[0])} ${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      const storyType = retval.toInt32();
+      console.log(`[StoryProbe] Story.get_CurrentGameplayStoryType -> ${storyType}(${storyTypeName(storyType)})`);
+    },
+  });
+
+  hook('Story.set_CurrentGameplayStoryType', OFFSETS.storySetCurrentGameplayStoryType, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      const storyType = args[1].toInt32();
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.set_CurrentGameplayStoryType self=${pointerSummary(args[0])} value=${storyType}(${storyTypeName(storyType)}) before=${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+  });
+
+  hook('Story.set_CurrentRouteId', OFFSETS.storySetCurrentRouteId, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.set_CurrentRouteId self=${pointerSummary(args[0])} value=${args[1].toInt32()} before=${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+  });
+
+  hook('Story.set_CurrentChapterId', OFFSETS.storySetCurrentChapterId, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.set_CurrentChapterId self=${pointerSummary(args[0])} value=${args[1].toInt32()} before=${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+  });
+
+  hook('Story.set_CurrentQuestId', OFFSETS.storySetCurrentQuestId, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.set_CurrentQuestId self=${pointerSummary(args[0])} value=${args[1].toInt32()} before=${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+  });
+
+  hook('Story.set_ClearedCurrentQuestId', OFFSETS.storySetClearedCurrentQuestId, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.set_ClearedCurrentQuestId self=${pointerSummary(args[0])} value=${args[1].toInt32() !== 0} before=${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+  });
+
+  hook('Story.set_CurrentSceneId', OFFSETS.storySetCurrentSceneId, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.set_CurrentSceneId self=${pointerSummary(args[0])} value=${args[1].toInt32()} before=${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+  });
+
+  hook('Story.set_HeadSceneId', OFFSETS.storySetHeadSceneId, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.set_HeadSceneId self=${pointerSummary(args[0])} value=${args[1].toInt32()} before=${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+  });
+
+  hook('Story.set_QuestIsRunInTheBackground', OFFSETS.storySetQuestIsRunInTheBackground, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.set_QuestIsRunInTheBackground self=${pointerSummary(args[0])} value=${args[1].toInt32() !== 0} before=${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+  });
+
+  hook('Story.get_PrevGameplayStoryType', OFFSETS.storyGetPrevGameplayStoryType, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      this.shouldLog = true;
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.get_PrevGameplayStoryType self=${pointerSummary(args[0])} ${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.shouldLog) return;
+      const storyType = retval.toInt32();
+      console.log(`[StoryProbe] Story.get_PrevGameplayStoryType -> ${storyType}(${storyTypeName(storyType)})`);
+    },
+  });
+
+  hook('Story.set_PrevGameplayStoryType', OFFSETS.storySetPrevGameplayStoryType, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      const storyType = args[1].toInt32();
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.set_PrevGameplayStoryType self=${pointerSummary(args[0])} value=${storyType}(${storyTypeName(storyType)}) before=${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+  });
+
+  hook('Story.ApplyCurrentGameplayStoryType', OFFSETS.storyApplyCurrentGameplayStoryType, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      this.self = args[0];
+      const storyType = args[1].toInt32();
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.ApplyCurrentGameplayStoryType self=${pointerSummary(args[0])} storyType=${storyType}(${storyTypeName(storyType)}) before=${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+    onLeave(retval) {
+      if (!this.self || !shouldTraceLateStory()) return;
+      console.log(`[StoryProbe] Story.ApplyCurrentGameplayStoryType done after=${storyInstanceStateSummary(this.self)}`);
+    },
+  });
+
+  hook('Story.ApplyClearedCurrentQuestId', OFFSETS.storyApplyClearedCurrentQuestId, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.ApplyClearedCurrentQuestId self=${pointerSummary(args[0])} questId=${args[1].toInt32()} before=${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+  });
+
+  hook('Story.ApplyClearedCurrentChapterIdAndQuestId', OFFSETS.storyApplyClearedCurrentChapterIdAndQuestId, {
+    onEnter(args) {
+      if (!shouldTraceLateStory()) return;
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.ApplyClearedCurrentChapterIdAndQuestId self=${pointerSummary(args[0])} questId=${args[1].toInt32()} chapterId=${args[2].toInt32()} before=${storyInstanceStateSummary(args[0])}`,
+      );
+    },
+  });
+
   hook('Story.IsClearedQuestWithQuestId', OFFSETS.storyIsClearedQuestWithQuestId, {
     onEnter(args) {
       if (!shouldTraceLateStory()) return;
@@ -581,7 +754,9 @@ awaitLibil2cpp(() => {
   hook('Story.ApplyInQuestLastScene', OFFSETS.storyApplyInQuestLastScene, {
     onEnter(args) {
       if (!shouldTraceLateStory()) return;
-      console.log(`[StoryProbe] #${nextSeq()} Story.ApplyInQuestLastScene self=${pointerSummary(args[0])} latestSceneId=${latestSceneProgressSceneId}`);
+      console.log(
+        `[StoryProbe] #${nextSeq()} Story.ApplyInQuestLastScene self=${pointerSummary(args[0])} latestSceneId=${latestSceneProgressSceneId} ${storyInstanceStateSummary(args[0])}`,
+      );
     },
   });
 

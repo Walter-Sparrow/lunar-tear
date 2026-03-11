@@ -101,6 +101,7 @@ func main() {
 		grpc.UnknownServiceHandler(loggingUnknownService),
 	)
 	questEngine := questflow.MustLoad()
+	newQuestEngine := questflow.MakeNewEngine()
 	userStore := store.New(nil, store.WithBootstrap(store.BootstrapProfile(*bootstrapProfile), questEngine))
 	log.Printf("store bootstrap profile: %s", *bootstrapProfile)
 
@@ -113,7 +114,7 @@ func main() {
 	pb.RegisterGiftServiceServer(grpcServer, service.NewGiftServiceServer(userStore))
 	pb.RegisterGamePlayServiceServer(grpcServer, service.NewGameplayServiceServer())
 	pb.RegisterGimmickServiceServer(grpcServer, service.NewGimmickServiceServer(userStore))
-	pb.RegisterQuestServiceServer(grpcServer, service.NewQuestServiceServer(userStore, questEngine))
+	pb.RegisterQuestServiceServer(grpcServer, service.NewQuestServiceServer(userStore, questEngine, newQuestEngine))
 	pb.RegisterNotificationServiceServer(grpcServer, service.NewNotificationServiceServer(userStore))
 
 	reflection.Register(grpcServer)
