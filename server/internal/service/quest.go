@@ -36,7 +36,7 @@ func buildSelectedQuestDiff(user store.UserState, tableNames []string) map[strin
 }
 
 func logQuestState(prefix string, user store.UserState) {
-	log.Printf("[QuestService] %s %#v %#v", prefix, user.MainQuest, user.Status)
+	log.Printf("[QuestService] %s %#v %#v %#v", prefix, user.MainQuest, user.Status, user.Quests)
 }
 
 func (s *QuestServiceServer) UpdateMainFlowSceneProgress(ctx context.Context, req *pb.UpdateMainFlowSceneProgressRequest) (*pb.UpdateMainFlowSceneProgressResponse, error) {
@@ -70,7 +70,7 @@ func (s *QuestServiceServer) UpdateMainQuestSceneProgress(ctx context.Context, r
 
 	userID := currentUserID(ctx, s.store)
 	user, _ := s.store.UpdateUser(userID, func(user *store.UserState) {
-		s.engine.HandleQuestSceneProgress(user, req.QuestSceneId, time.Now().UnixMilli())
+		s.newEngine.HandleMainQuestSceneProgress(user, req.QuestSceneId)
 	})
 	logQuestState("UpdateMainQuestSceneProgress state", user)
 
@@ -89,14 +89,22 @@ func (s *QuestServiceServer) StartMainQuest(ctx context.Context, req *pb.StartMa
 	log.Printf("[QuestService] StartMainQuest: %+v", req)
 
 	userID := currentUserID(ctx, s.store)
+	nowMillis := time.Now().UnixMilli()
 	user, _ := s.store.UpdateUser(userID, func(user *store.UserState) {
-		s.newEngine.HandleQuestStart(user, req.QuestId, req.IsMainFlow, req.IsBattleOnly)
+		s.newEngine.HandleQuestStart(user, req.QuestId, req.IsBattleOnly, nowMillis)
 	})
 	logQuestState("StartMainQuest state", user)
 
 	return &pb.StartMainQuestResponse{
 		BattleDropReward: []*pb.BattleDropReward{},
-		DiffUserData:     buildSelectedQuestDiff(user, []string{"IUserQuest", "IUserQuestMission"}),
+		DiffUserData: buildSelectedQuestDiff(user, []string{
+			"IUserQuest",
+			"IUserQuestMission",
+			"IUserMainQuestFlowStatus",
+			"IUserMainQuestMainFlowStatus",
+			"IUserMainQuestProgressStatus",
+			"IUserMainQuestSeasonRoute",
+		}),
 	}, nil
 }
 
