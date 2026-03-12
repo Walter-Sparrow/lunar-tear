@@ -200,12 +200,19 @@ func (e *NewEngine) initQuestState(user *store.UserState, questID int32) {
 	}
 }
 
-func isSceneTerminal(scene questScene) bool {
-	return scene.QuestResultType == QuestResultTypeHalfResult || scene.QuestResultType == QuestResultTypeFullResult
-}
-
 func isMainQuestPlayable(quest quest) bool {
 	return !quest.IsRunInTheBackground && quest.IsCountedAsQuest
+}
+
+func (e *NewEngine) clearQuestMissions(user *store.UserState, questID int32, nowMillis int64) {
+	for _, missionID := range e.missionIdsByQuestId[questID] {
+		key := store.QuestMissionKey{QuestID: questID, QuestMissionID: missionID}
+		mission := user.QuestMissions[key]
+		mission.IsClear = true
+		mission.ProgressValue = 1
+		mission.LatestClearDatetime = nowMillis
+		user.QuestMissions[key] = mission
+	}
 }
 
 func (e *NewEngine) HandleQuestStart(user *store.UserState, questID int32, isBattleOnly bool, nowMillis int64) {
@@ -269,18 +276,44 @@ func (e *NewEngine) HandleMainQuestSceneProgress(user *store.UserState, questSce
 
 	user.MainQuest.CurrentQuestSceneID = questSceneId
 	user.MainQuest.HeadQuestSceneID = max(user.MainQuest.HeadQuestSceneID, questSceneId)
-	if isSceneTerminal(scene) {
+	if scene.QuestResultType == QuestResultTypeHalfResult || scene.QuestResultType == QuestResultTypeFullResult {
 		user.MainQuest.IsReachedLastQuestScene = true
 	}
 	if isMainQuestPlayable(quest) {
-		if isSceneTerminal(scene) {
-			questState := user.Quests[quest.QuestId]
+		questState := user.Quests[quest.QuestId]
+		if scene.QuestResultType == QuestResultTypeHalfResult || scene.QuestResultType == QuestResultTypeFullResult {
 			questState.QuestStateType = store.UserQuestStateTypeCleared
-			user.Quests[quest.QuestId] = questState
 		}
+		if scene.QuestResultType == QuestResultTypeFullResult {
+			questState.ClearCount = 1
+			questState.DailyClearCount = 1
+		}
+		user.Quests[quest.QuestId] = questState
+
 		user.MainQuest.ProgressQuestSceneID = questSceneId
 		user.MainQuest.ProgressHeadQuestSceneID = max(user.MainQuest.ProgressHeadQuestSceneID, questSceneId)
 		user.MainQuest.CurrentQuestFlowType = int32(QuestFlowTypeSubFlow)
 		user.MainQuest.ProgressQuestFlowType = int32(QuestFlowTypeSubFlow)
 	}
+}
+
+func (e *NewEngine) HandleQuestFinish(user *store.UserState, questID int32, nowMillis int64) {
+	_, ok := e.questById[questID]
+	if !ok {
+		panic(fmt.Sprintf("unknown questId=%d for HandleQuestFinish", questID))
+	}
+
+	questState := user.Quests[questID]
+	questState.QuestStateType = store.UserQuestStateTypeCleared
+	questState.ClearCount = 1
+	questState.DailyClearCount = 1
+	questState.LastClearDatetime = nowMillis
+
+	user.MainQuest.ProgressQuestSceneID = 0
+	user.MainQuest.ProgressHeadQuestSceneID = 0
+	user.MainQuest.ProgressQuestFlowType = 0
+	user.MainQuest.CurrentQuestFlowType = int32(QuestFlowTypeUnknown)
+	user.Quests[questID] = questState
+
+	e.clearQuestMissions(user, questID, nowMillis)
 }

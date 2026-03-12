@@ -129,22 +129,22 @@ func (s *QuestServiceServer) FinishMainQuest(ctx context.Context, req *pb.Finish
 
 	nowMillis := time.Now().UnixMilli()
 	userID := currentUserID(ctx, s.store)
-	var outcome questflow.FinishOutcome
+	// var outcome questflow.FinishOutcome
 	user, _ := s.store.UpdateUser(userID, func(user *store.UserState) {
-		outcome = s.engine.HandleQuestFinish(user, req.QuestId, req.IsMainFlow, nowMillis)
+		s.newEngine.HandleQuestFinish(user, req.QuestId, nowMillis)
 	})
 	logQuestState("FinishMainQuest state", user)
 
 	return &pb.FinishMainQuestResponse{
-		DropReward:                      []*pb.QuestReward{},
-		FirstClearReward:                toProtoRewards(outcome.FirstClearRewards),
-		MissionClearReward:              toProtoRewards(outcome.MissionClearRewards),
-		MissionClearCompleteReward:      toProtoRewards(outcome.MissionClearCompleteRewards),
-		AutoOrbitResult:                 []*pb.QuestReward{},
-		IsBigWin:                        outcome.IsBigWin,
-		BigWinClearedQuestMissionIdList: outcome.BigWinClearedQuestMissionIDs,
-		ReplayFlowFirstClearReward:      []*pb.QuestReward{},
-		UserStatusCampaignReward:        []*pb.QuestReward{},
+		// DropReward:                      []*pb.QuestReward{},
+		// FirstClearReward:                toProtoRewards(outcome.FirstClearRewards),
+		// MissionClearReward:              toProtoRewards(outcome.MissionClearRewards),
+		// MissionClearCompleteReward:      toProtoRewards(outcome.MissionClearCompleteRewards),
+		// AutoOrbitResult:                 []*pb.QuestReward{},
+		// IsBigWin:                        outcome.IsBigWin,
+		// BigWinClearedQuestMissionIdList: outcome.BigWinClearedQuestMissionIDs,
+		// ReplayFlowFirstClearReward:      []*pb.QuestReward{},
+		// UserStatusCampaignReward:        []*pb.QuestReward{},
 		DiffUserData: buildSelectedQuestDiff(user, []string{
 			"IUserQuest",
 			"IUserQuestMission",
