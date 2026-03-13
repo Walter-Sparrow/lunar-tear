@@ -1,6 +1,5 @@
 # IDE / Cursor
-.cursor/projects/
-.cursor/rules/*.mdc.bak
+.cursor/
 
 # Build artifacts
 server/bin/

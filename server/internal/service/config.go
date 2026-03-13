@@ -37,10 +37,10 @@ func (s *ConfigServiceServer) GetReviewServerConfig(ctx context.Context, _ *empt
 			Url:             s.OctoURL,
 		},
 		WebView: &pb.WebViewConfig{
-			BaseUrl: "http://localhost:8080",
+			BaseUrl: s.OctoURL,
 		},
 		MasterData: &pb.MasterDataConfig{
-			UrlFormat: "http://localhost:8080/master-data/%s",
+			UrlFormat: s.OctoURL + "/master-data/%s",
 		},
 		DiffUserData: mock.EmptyDiff(),
 	}, nil
