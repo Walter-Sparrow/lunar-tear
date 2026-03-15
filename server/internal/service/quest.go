@@ -73,14 +73,17 @@ func (s *QuestServiceServer) UpdateMainQuestSceneProgress(ctx context.Context, r
 		s.newEngine.HandleMainQuestSceneProgress(user, req.QuestSceneId)
 	})
 	logQuestState("UpdateMainQuestSceneProgress state", user)
-
 	return &pb.UpdateMainQuestSceneProgressResponse{
 		DiffUserData: buildSelectedQuestDiff(user, []string{
+			"IUserStatus",
+			"IUserCharacter",
+			"IUserCostume",
 			"IUserQuest",
 			"IUserQuestMission",
 			"IUserMainQuestFlowStatus",
 			"IUserMainQuestMainFlowStatus",
 			"IUserMainQuestProgressStatus",
+			"IUserWeaponStory",
 		}),
 	}, nil
 }
@@ -115,8 +118,8 @@ func toProtoRewards(grants []questflow.RewardGrant) []*pb.QuestReward {
 	out := make([]*pb.QuestReward, len(grants))
 	for i, g := range grants {
 		out[i] = &pb.QuestReward{
-			PossessionType: g.PossessionType,
-			PossessionId:   g.PossessionID,
+			PossessionType: int32(g.PossessionType),
+			PossessionId:   g.PossessionId,
 			Count:          g.Count,
 		}
 	}
@@ -129,22 +132,22 @@ func (s *QuestServiceServer) FinishMainQuest(ctx context.Context, req *pb.Finish
 
 	nowMillis := time.Now().UnixMilli()
 	userID := currentUserID(ctx, s.store)
-	// var outcome questflow.FinishOutcome
+	var outcome questflow.FinishOutcome
 	user, _ := s.store.UpdateUser(userID, func(user *store.UserState) {
-		s.newEngine.HandleQuestFinish(user, req.QuestId, nowMillis)
+		outcome = s.newEngine.HandleQuestFinish(user, req.QuestId, nowMillis)
 	})
 	logQuestState("FinishMainQuest state", user)
 
 	return &pb.FinishMainQuestResponse{
-		// DropReward:                      []*pb.QuestReward{},
-		// FirstClearReward:                toProtoRewards(outcome.FirstClearRewards),
-		// MissionClearReward:              toProtoRewards(outcome.MissionClearRewards),
-		// MissionClearCompleteReward:      toProtoRewards(outcome.MissionClearCompleteRewards),
-		// AutoOrbitResult:                 []*pb.QuestReward{},
-		// IsBigWin:                        outcome.IsBigWin,
-		// BigWinClearedQuestMissionIdList: outcome.BigWinClearedQuestMissionIDs,
-		// ReplayFlowFirstClearReward:      []*pb.QuestReward{},
-		// UserStatusCampaignReward:        []*pb.QuestReward{},
+		DropReward:                      []*pb.QuestReward{},
+		FirstClearReward:                toProtoRewards(outcome.FirstClearRewards),
+		MissionClearReward:              toProtoRewards(outcome.MissionClearRewards),
+		MissionClearCompleteReward:      toProtoRewards(outcome.MissionClearCompleteRewards),
+		AutoOrbitResult:                 []*pb.QuestReward{},
+		IsBigWin:                        outcome.IsBigWin,
+		BigWinClearedQuestMissionIdList: outcome.BigWinClearedQuestMissionIds,
+		ReplayFlowFirstClearReward:      []*pb.QuestReward{},
+		UserStatusCampaignReward:        []*pb.QuestReward{},
 		DiffUserData: buildSelectedQuestDiff(user, []string{
 			"IUserQuest",
 			"IUserQuestMission",
@@ -152,6 +155,13 @@ func (s *QuestServiceServer) FinishMainQuest(ctx context.Context, req *pb.Finish
 			"IUserMainQuestMainFlowStatus",
 			"IUserMainQuestProgressStatus",
 			"IUserMainQuestSeasonRoute",
+			"IUserStatus",
+			"IUserGem",
+			"IUserCharacter",
+			"IUserCostume",
+			"IUserWeapon",
+			"IUserWeaponStory",
+			"IUserCompanion",
 		}),
 	}, nil
 }

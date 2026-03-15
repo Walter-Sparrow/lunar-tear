@@ -100,6 +100,7 @@ func FullClientTableMap(user store.UserState) map[string]string {
 	userCharacterJSON, _ := encodeJSONMaps(sortedCharacterRecords(user)...)
 	userCostumeJSON, _ := encodeJSONMaps(sortedCostumeRecords(user)...)
 	userWeaponJSON, _ := encodeJSONMaps(sortedWeaponRecords(user)...)
+	userWeaponStoryJSON, _ := encodeJSONMaps(sortedWeaponStoryRecords(user)...)
 	userCompanionJSON, _ := encodeJSONMaps(sortedCompanionRecords(user)...)
 	userDeckCharacterJSON, _ := encodeJSONMaps(sortedDeckCharacterRecords(user)...)
 	userDeckJSON, _ := encodeJSONMaps(sortedDeckRecords(user)...)
@@ -120,6 +121,7 @@ func FullClientTableMap(user store.UserState) map[string]string {
 		"IUserCharacter":               userCharacterJSON,
 		"IUserCostume":                 userCostumeJSON,
 		"IUserWeapon":                  userWeaponJSON,
+		"IUserWeaponStory":             userWeaponStoryJSON,
 		"IUserCompanion":               userCompanionJSON,
 		"IUserDeckCharacter":           userDeckCharacterJSON,
 		"IUserDeck":                    userDeckJSON,
@@ -251,6 +253,28 @@ func sortedWeaponRecords(user store.UserState) []map[string]any {
 			"isProtected":         row.IsProtected,
 			"acquisitionDatetime": row.AcquisitionDatetime,
 			"latestVersion":       row.LatestVersion,
+		})
+	}
+	return records
+}
+
+func sortedWeaponStoryRecords(user store.UserState) []map[string]any {
+	if user.WeaponStories == nil {
+		return []map[string]any{}
+	}
+	weaponIds := make([]int32, 0, len(user.WeaponStories))
+	for weaponId := range user.WeaponStories {
+		weaponIds = append(weaponIds, weaponId)
+	}
+	sort.Slice(weaponIds, func(i, j int) bool { return weaponIds[i] < weaponIds[j] })
+	records := make([]map[string]any, 0, len(weaponIds))
+	for _, weaponId := range weaponIds {
+		row := user.WeaponStories[weaponId]
+		records = append(records, map[string]any{
+			"userId":                 user.UserID,
+			"weaponId":               row.WeaponId,
+			"releasedMaxStoryIndex":  row.ReleasedMaxStoryIndex,
+			"latestVersion":          row.LatestVersion,
 		})
 	}
 	return records

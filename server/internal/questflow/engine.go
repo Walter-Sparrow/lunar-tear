@@ -11,14 +11,6 @@ import (
 	"lunar-tear/server/internal/store"
 )
 
-const (
-	possessionTypeCostume   = int32(1)
-	possessionTypeWeapon    = int32(2)
-	possessionTypeCompanion = int32(4)
-	possessionTypeFreeGem   = int32(12)
-	possessionTypeWeaponAlt = int32(13)
-)
-
 type QuestFlowType int32
 
 const (
@@ -141,20 +133,6 @@ type mainQuestChapterRow struct {
 	MainQuestRouteID         int32 `json:"MainQuestRouteId"`
 	SortOrder                int32 `json:"SortOrder"`
 	MainQuestSequenceGroupID int32 `json:"MainQuestSequenceGroupId"`
-}
-
-type RewardGrant struct {
-	PossessionType int32
-	PossessionID   int32
-	Count          int32
-}
-
-type FinishOutcome struct {
-	FirstClearRewards            []RewardGrant
-	MissionClearRewards          []RewardGrant
-	MissionClearCompleteRewards  []RewardGrant
-	BigWinClearedQuestMissionIDs []int32
-	IsBigWin                     bool
 }
 
 type Engine struct {
@@ -503,9 +481,6 @@ func (e *Engine) materializeQuestClearState(user *store.UserState, questID int32
 		}
 	}
 
-	if grantFirstClearRewards {
-		e.applyQuestRewards(user, questID, nowMillis)
-	}
 }
 
 func (e *Engine) unlockReleasedQuests(user *store.UserState, clearedQuestID int32, nowMillis int64) bool {
@@ -546,162 +521,6 @@ func (e *Engine) effectiveFirstClearRewardGroupID(user *store.UserState, questMe
 		}
 	}
 	return rewardGroupID
-}
-
-func (e *Engine) buildFinishOutcome(user *store.UserState, questID int32) FinishOutcome {
-	outcome := FinishOutcome{}
-	quest, ok := user.Quests[questID]
-	if !ok {
-		return outcome
-	}
-	questMeta, ok := e.questByID[questID]
-	if !ok {
-		return outcome
-	}
-
-	if !quest.IsRewardGranted {
-		rewardGroupID := e.effectiveFirstClearRewardGroupID(user, questMeta)
-		for _, reward := range e.firstClearRewardsByGroupID[rewardGroupID] {
-			outcome.FirstClearRewards = append(outcome.FirstClearRewards, RewardGrant{
-				PossessionType: reward.PossessionType,
-				PossessionID:   reward.PossessionID,
-				Count:          reward.Count,
-			})
-		}
-	}
-
-	// Mission clear rewards — include rewards for missions not yet cleared.
-	// materializeQuestClearState (called right after this) auto-clears all
-	// non-9999 missions, so every !IsClear mission is about to be cleared.
-	newlyClearedCount := 0
-	totalNon9999 := 0
-	for _, questMissionID := range e.missionIDsByQuestID[questID] {
-		missionMaster, ok := e.questMissionByID[questMissionID]
-		if !ok || missionMaster.QuestMissionConditionType == 9999 {
-			continue
-		}
-		totalNon9999++
-
-		key := store.QuestMissionKey{QuestID: questID, QuestMissionID: questMissionID}
-		mission := user.QuestMissions[key]
-
-		if !mission.IsClear {
-			newlyClearedCount++
-			outcome.MissionClearRewards = appendRewardRows(outcome.MissionClearRewards, e.questMissionRewardsByID[missionMaster.QuestMissionRewardID])
-		}
-	}
-
-	// Mission clear complete (9999) — all non-9999 missions will be cleared
-	// after materializeQuestClearState, so check if they are all either
-	// already cleared or about to be cleared (i.e. totalNon9999 == already + newly).
-	alreadyClearedCount := totalNon9999 - newlyClearedCount
-	allWillBeClear := totalNon9999 > 0 && (alreadyClearedCount+newlyClearedCount) == totalNon9999
-	if allWillBeClear {
-		for _, questMissionID := range e.missionIDsByQuestID[questID] {
-			missionMaster, ok := e.questMissionByID[questMissionID]
-			if !ok || missionMaster.QuestMissionConditionType != 9999 {
-				continue
-			}
-			key := store.QuestMissionKey{QuestID: questID, QuestMissionID: questMissionID}
-			if !user.QuestMissions[key].IsClear {
-				outcome.MissionClearCompleteRewards = appendRewardRows(outcome.MissionClearCompleteRewards, e.questMissionRewardsByID[missionMaster.QuestMissionRewardID])
-				outcome.BigWinClearedQuestMissionIDs = append(outcome.BigWinClearedQuestMissionIDs, questMissionID)
-			}
-		}
-		outcome.IsBigWin = len(outcome.BigWinClearedQuestMissionIDs) > 0
-	}
-
-	return outcome
-}
-
-func (e *Engine) applyQuestRewards(user *store.UserState, questID int32, nowMillis int64) {
-	questMeta, ok := e.questByID[questID]
-	if !ok {
-		return
-	}
-
-	user.Status.Exp += questMeta.UserExp
-
-	if questMeta.CharacterExp != 0 {
-		for id, row := range user.Characters {
-			row.Exp += questMeta.CharacterExp
-			user.Characters[id] = row
-		}
-	}
-
-	if questMeta.CostumeExp != 0 {
-		for key, row := range user.Costumes {
-			row.Exp += questMeta.CostumeExp
-			user.Costumes[key] = row
-		}
-	}
-
-	rewardGroupID := e.effectiveFirstClearRewardGroupID(user, questMeta)
-	for _, reward := range e.firstClearRewardsByGroupID[rewardGroupID] {
-		e.applyRewardPossession(user, reward.PossessionType, reward.PossessionID, reward.Count, nowMillis)
-	}
-}
-
-func (e *Engine) applyRewardPossession(user *store.UserState, possessionType, possessionID, count int32, nowMillis int64) {
-	switch possessionType {
-	case possessionTypeFreeGem:
-		user.Gem.FreeGem += count
-	case possessionTypeCostume:
-		e.grantCostume(user, possessionID, nowMillis)
-	case possessionTypeWeapon, possessionTypeWeaponAlt:
-		e.grantWeapon(user, possessionID, nowMillis)
-	case possessionTypeCompanion:
-		e.grantCompanion(user, possessionID, nowMillis)
-	default:
-		log.Printf("[QuestFlow] unsupported reward possession: type=%d id=%d count=%d", possessionType, possessionID, count)
-	}
-}
-
-func (e *Engine) grantCostume(user *store.UserState, costumeID int32, nowMillis int64) {
-	for _, row := range user.Costumes {
-		if row.CostumeID == costumeID {
-			return
-		}
-	}
-	key := fmt.Sprintf("reward-costume-%d", costumeID)
-	user.Costumes[key] = store.CostumeState{
-		UserCostumeUUID:     key,
-		CostumeID:           costumeID,
-		Level:               1,
-		Exp:                 0,
-		AcquisitionDatetime: nowMillis,
-	}
-}
-
-func (e *Engine) grantWeapon(user *store.UserState, weaponID int32, nowMillis int64) {
-	for _, row := range user.Weapons {
-		if row.WeaponID == weaponID {
-			return
-		}
-	}
-	key := fmt.Sprintf("reward-weapon-%d", weaponID)
-	user.Weapons[key] = store.WeaponState{
-		UserWeaponUUID:      key,
-		WeaponID:            weaponID,
-		Level:               1,
-		Exp:                 0,
-		AcquisitionDatetime: nowMillis,
-	}
-}
-
-func (e *Engine) grantCompanion(user *store.UserState, companionID int32, nowMillis int64) {
-	for _, row := range user.Companions {
-		if row.CompanionID == companionID {
-			return
-		}
-	}
-	key := fmt.Sprintf("reward-companion-%d", companionID)
-	user.Companions[key] = store.CompanionState{
-		UserCompanionUUID:   key,
-		CompanionID:         companionID,
-		Level:               1,
-		AcquisitionDatetime: nowMillis,
-	}
 }
 
 // HandleMainFlowSceneProgress updates MainFlowStatus and FlowStatus tables only
@@ -801,11 +620,11 @@ func (e *Engine) HandleQuestStart(user *store.UserState, questID int32, isBattle
 }
 
 // HandleQuestFinish clears quest, grants rewards, resets progress status
-func (e *Engine) HandleQuestFinish(user *store.UserState, questID int32, isMainFlow bool, nowMillis int64) FinishOutcome {
+func (e *Engine) HandleQuestFinish(user *store.UserState, questID int32, isMainFlow bool, nowMillis int64) {
 	e.ensureQuestVisible(user, questID, true, nowMillis)
 
 	// Compute rewards BEFORE mutating state (buildFinishOutcome reads current IsClear flags)
-	outcome := e.buildFinishOutcome(user, questID)
+	// outcome := e.buildFinishOutcome(user, questID)
 
 	// Mark quest cleared + clear missions + grant rewards
 	e.materializeQuestClearState(user, questID, true, nowMillis)
@@ -832,7 +651,7 @@ func (e *Engine) HandleQuestFinish(user *store.UserState, questID int32, isMainF
 	user.MainQuest.IsReachedLastQuestScene = lastMainFlowScene != 0 &&
 		user.MainQuest.CurrentQuestSceneID >= lastMainFlowScene
 
-	return outcome
+	// return outcome
 }
 
 // HandleQuestRestart resets quest and mission progress for replay
@@ -855,27 +674,4 @@ func (e *Engine) HandleQuestRestart(user *store.UserState, questID int32, nowMil
 		m.LatestClearDatetime = 0
 		user.QuestMissions[key] = m
 	}
-}
-
-func appendRewardRows(dst []RewardGrant, src []questMissionRewardRow) []RewardGrant {
-	for _, r := range src {
-		dst = append(dst, RewardGrant{
-			PossessionType: r.PossessionType,
-			PossessionID:   r.PossessionID,
-			Count:          r.Count,
-		})
-	}
-	return dst
-}
-
-func toRewardGrants(rows []questMissionRewardRow) []RewardGrant {
-	out := make([]RewardGrant, len(rows))
-	for i, r := range rows {
-		out[i] = RewardGrant{
-			PossessionType: r.PossessionType,
-			PossessionID:   r.PossessionID,
-			Count:          r.Count,
-		}
-	}
-	return out
 }

@@ -121,7 +121,14 @@ type UserState struct {
 	Quests         map[int32]UserQuestState
 	QuestMissions  map[QuestMissionKey]UserQuestMissionState
 	Missions       map[int32]UserMissionState
+	WeaponStories  map[int32]WeaponStoryState
 	Gimmick        GimmickState
+}
+
+type WeaponStoryState struct {
+	WeaponId               int32
+	ReleasedMaxStoryIndex  int32
+	LatestVersion          int64
 }
 
 type UserSettingState struct {
@@ -271,8 +278,7 @@ type UserQuestStateType int32
 const (
 	UserQuestStateTypeUnknown UserQuestStateType = 0
 	UserQuestStateTypeActive  UserQuestStateType = 1
-	UserQuestStateTypeRunning UserQuestStateType = 2
-	UserQuestStateTypeCleared UserQuestStateType = 3
+	UserQuestStateTypeCleared UserQuestStateType = 2
 )
 
 type UserQuestState struct {
@@ -755,6 +761,7 @@ func seedUserState(userID int64, uuid string, nowMillis int64, profile Bootstrap
 		},
 		Quests:        map[int32]UserQuestState{},
 		QuestMissions: map[QuestMissionKey]UserQuestMissionState{},
+		WeaponStories: make(map[int32]WeaponStoryState),
 		Missions: map[int32]UserMissionState{
 			starterMissionID: {
 				MissionID:                 starterMissionID,
@@ -788,6 +795,7 @@ func (u UserState) clone() UserState {
 	out.Decks = maps.Clone(u.Decks)
 	out.Quests = maps.Clone(u.Quests)
 	out.QuestMissions = maps.Clone(u.QuestMissions)
+	out.WeaponStories = maps.Clone(u.WeaponStories)
 	out.Missions = maps.Clone(u.Missions)
 	out.Gimmick = GimmickState{
 		Progress:         maps.Clone(u.Gimmick.Progress),
