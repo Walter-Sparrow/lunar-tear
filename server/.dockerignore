@@ -1,1 +1,6 @@
 assets/
+gen/
+Dockerfile
+.dockerignore
+docker-compose.yaml
+lunar-tear

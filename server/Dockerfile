@@ -1,33 +1,38 @@
-FROM alpine:latest AS builder
+# First, generate the protos only if they change
+FROM bufbuild/buf AS proto-builder
 
 WORKDIR /usr/local/src
+COPY buf.yaml buf.gen.yaml ./
+COPY proto/ ./proto/
+
+RUN buf generate
+
+
+# Then build the server
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /usr/local/src
+COPY --from=proto-builder /usr/local/src/gen ./gen
 COPY . .
 
-RUN apk add --no-cache \
-    protobuf \
-    protobuf-dev \
-    protoc \
-    make \
-    go \
-    libcap
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o lunar-tear ./cmd/lunar-tear
 
-RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest &&\
-    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest &&\ 
-    PATH="$PATH:$(go env GOPATH)/bin" make proto &&\
-    go build -o lunar-tear ./cmd/lunar-tear &&\
-    setcap cap_net_bind_service=+ep ./lunar-tear
+# Wish it was a better way to do this.
+# I'd suggest not binding to port 443 and using a proxy like nginx to handle that.
+# Yeah, I know, too complicated, but fuck I hate doing this.
+FROM builder AS security-flaw
 
-FROM alpine:latest
+RUN apk add --no-cache libcap
+RUN setcap cap_net_bind_service=+ep ./lunar-tear
+
+# Hardened final image
+FROM gcr.io/distroless/static-debian13:nonroot
 
 WORKDIR /opt/lunar-tear
+USER 65532:65532
+COPY --from=security-flaw /usr/local/src/lunar-tear .
 
-RUN chown 1000:1000 /opt/lunar-tear
-
-USER 1000
-
-COPY --from=builder /usr/local/src/lunar-tear .
-
-COPY entrypoint.sh .
-
-ENTRYPOINT /opt/lunar-tear/entrypoint.sh
-
+# IMHO: if the entrypoint is a single line, you're introducing unnecesary bloat
+# Chose between env variables or input arguments, don't use the former to feed 
+# the latter.
+ENTRYPOINT [ "./lunar-tear" ] 
