@@ -20,7 +20,8 @@ type Bundle struct {
 	EventChapters []int32 `json:"event_chapters"`
 	GachaIds      []int32 `json:"gacha_ids"`
 	LoginBonuses  []int32 `json:"login_bonuses"`
-	SideStories   []int32 `json:"side_stories"` // SideStoryQuestLimitContentIds linked via event chapters
+	SideStories   []int32 `json:"side_stories"`
+	ShopIds       []int32 `json:"shop_ids"`
 }
 
 // LoadBundleIndex reads the pre-generated bundle index from a JSON file.
