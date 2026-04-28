@@ -26,6 +26,23 @@ func (h *QuestHandler) isSceneAhead(newSceneId, currentHeadId int32) bool {
 	return h.SceneById[newSceneId].SortOrder > h.SceneById[currentHeadId].SortOrder
 }
 
+func (h *QuestHandler) advanceMainFlowScene(user *store.UserState, questId, sceneId int32) {
+	user.MainQuest.CurrentQuestSceneId = sceneId
+	if h.isSceneAhead(sceneId, user.MainQuest.HeadQuestSceneId) {
+		user.MainQuest.HeadQuestSceneId = sceneId
+	}
+
+	lastSceneId := h.getChapterLastSceneId(questId)
+	user.MainQuest.IsReachedLastQuestScene = sceneId == lastSceneId
+
+	if routeId, ok := h.RouteIdByQuestId[questId]; ok {
+		user.MainQuest.CurrentMainQuestRouteId = routeId
+		if seasonId, ok := h.SeasonIdByRouteId[routeId]; ok {
+			user.MainQuest.MainQuestSeasonId = seasonId
+		}
+	}
+}
+
 func (h *QuestHandler) HandleMainFlowSceneProgress(user *store.UserState, questSceneId int32, nowMillis int64) {
 	scene, ok := h.SceneById[questSceneId]
 	if !ok {
@@ -37,10 +54,7 @@ func (h *QuestHandler) HandleMainFlowSceneProgress(user *store.UserState, questS
 		panic(fmt.Sprintf("unknown questId=%d for HandleMainFlowSceneProgress", questSceneId))
 	}
 
-	user.MainQuest.CurrentQuestSceneId = questSceneId
-	if h.isSceneAhead(questSceneId, user.MainQuest.HeadQuestSceneId) {
-		user.MainQuest.HeadQuestSceneId = questSceneId
-	}
+	h.advanceMainFlowScene(user, quest.QuestId, questSceneId)
 	user.MainQuest.CurrentQuestFlowType = int32(model.QuestFlowTypeMainFlow)
 
 	if user.SideStoryActiveProgress.CurrentSideStoryQuestId != 0 {
@@ -48,15 +62,6 @@ func (h *QuestHandler) HandleMainFlowSceneProgress(user *store.UserState, questS
 			LatestVersion: nowMillis,
 		}
 	}
-
-	lastSceneId := h.getChapterLastSceneId(scene.QuestId)
-	user.MainQuest.IsReachedLastQuestScene = questSceneId == lastSceneId
-
-	routeId, ok := h.RouteIdByQuestId[quest.QuestId]
-	if !ok {
-		panic(fmt.Sprintf("unknown questId=%d for HandleMainFlowSceneProgress setting currentMainQuestRouteId", quest.QuestId))
-	}
-	user.MainQuest.CurrentMainQuestRouteId = routeId
 
 	user.PortalCageStatus.IsCurrentProgress = false
 	user.PortalCageStatus.LatestVersion = nowMillis

@@ -94,18 +94,8 @@ func (h *QuestHandler) handleQuestStartInternal(user *store.UserState, questId i
 		if sceneIds := h.SceneIdsByQuestId[questId]; len(sceneIds) > 0 {
 			firstSceneId := sceneIds[0]
 			prevSceneId := user.MainQuest.CurrentQuestSceneId
-			user.MainQuest.CurrentQuestSceneId = firstSceneId
-			if h.isSceneAhead(firstSceneId, user.MainQuest.HeadQuestSceneId) {
-				user.MainQuest.HeadQuestSceneId = firstSceneId
-			}
+			h.advanceMainFlowScene(user, questId, firstSceneId)
 			user.MainQuest.CurrentQuestFlowType = int32(model.QuestFlowTypeMainFlow)
-			lastSceneId := h.getChapterLastSceneId(questId)
-			user.MainQuest.IsReachedLastQuestScene = firstSceneId == lastSceneId
-			if routeId, ok := h.RouteIdByQuestId[questId]; ok {
-				if seasonId, ok := h.SeasonIdByRouteId[routeId]; ok {
-					user.MainQuest.MainQuestSeasonId = seasonId
-				}
-			}
 			log.Printf("[HandleQuestStart] background quest %d auto-cleared, scene %d -> %d", questId, prevSceneId, firstSceneId)
 		}
 	}
@@ -142,8 +132,15 @@ func (h *QuestHandler) HandleQuestFinish(user *store.UserState, questId int32, i
 	}
 
 	outcome := h.evaluateFinishOutcome(user, questId)
+	wasReplay := user.MainQuest.CurrentQuestFlowType == int32(model.QuestFlowTypeReplayFlow)
+
 	if !isRetired {
 		h.applyQuestVictory(user, questId, &outcome, nowMillis)
+
+		if isMainQuestPlayable(quest) && !wasReplay {
+			lastSceneId := h.getLastMainFlowSceneId(questId)
+			h.advanceMainFlowScene(user, questId, lastSceneId)
+		}
 	}
 
 	if isRetired && !isAnnihilated && quest.Stamina > 1 {
@@ -151,8 +148,6 @@ func (h *QuestHandler) HandleQuestFinish(user *store.UserState, questId int32, i
 		maxMillis := h.MaxStaminaByLevel[user.Status.Level] * 1000
 		store.RecoverStamina(user, refund*1000, maxMillis, nowMillis)
 	}
-
-	wasReplay := user.MainQuest.CurrentQuestFlowType == int32(model.QuestFlowTypeReplayFlow)
 
 	user.MainQuest.ProgressQuestSceneId = 0
 	user.MainQuest.ProgressHeadQuestSceneId = 0

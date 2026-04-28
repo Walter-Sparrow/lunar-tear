@@ -45,13 +45,20 @@ type infoLoad struct {
 }
 
 var (
-	listBinCache    = make(map[string]listBinIndex) // revision → index
+	listBinCache    = make(map[string]listBinIndex) // revision/platform → index
 	listBinInflight = make(map[string]*listBinLoad)
 	listBinCacheMu  sync.RWMutex
-	infoCache       = make(map[string]map[string]infoAlias) // revision → from-name → duplicate target
+	infoCache       = make(map[string]map[string]infoAlias) // revision/platform → from-name → duplicate target
 	infoInflight    = make(map[string]*infoLoad)
 	infoCacheMu     sync.RWMutex
 )
+
+func cacheKey(revision, platform string) string {
+	if platform == "" {
+		return revision + "/_shared"
+	}
+	return revision + "/" + platform
+}
 
 // infoJSONEntry is one entry from assets/revisions/{rev}/info.json (duplicate files: serve to-name when asked for from-name).
 type infoJSONEntry struct {
@@ -208,33 +215,34 @@ func parseListBin(data []byte) listBinIndex {
 	return idx
 }
 
-func loadListBinIndex(baseDir, revision string) (listBinIndex, bool) {
+func loadListBinIndex(baseDir, revision, platform string) (listBinIndex, bool) {
+	key := cacheKey(revision, platform)
 	listBinCacheMu.RLock()
-	idx, ok := listBinCache[revision]
+	idx, ok := listBinCache[key]
 	listBinCacheMu.RUnlock()
 	if ok {
 		return idx, true
 	}
 
 	listBinCacheMu.Lock()
-	if idx, ok := listBinCache[revision]; ok {
+	if idx, ok := listBinCache[key]; ok {
 		listBinCacheMu.Unlock()
 		return idx, true
 	}
-	if load := listBinInflight[revision]; load != nil {
+	if load := listBinInflight[key]; load != nil {
 		listBinCacheMu.Unlock()
 		<-load.done
 		return load.idx, load.ok
 	}
 	load := &listBinLoad{done: make(chan struct{})}
-	listBinInflight[revision] = load
+	listBinInflight[key] = load
 	listBinCacheMu.Unlock()
 
-	filePath := filepath.Join(baseDir, "assets", "revisions", revision, "list.bin")
+	filePath := filepath.Join(baseDir, "assets", "revisions", revision, platform, "list.bin")
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		listBinCacheMu.Lock()
-		delete(listBinInflight, revision)
+		delete(listBinInflight, key)
 		close(load.done)
 		listBinCacheMu.Unlock()
 		return nil, false
@@ -243,41 +251,42 @@ func loadListBinIndex(baseDir, revision string) (listBinIndex, bool) {
 	load.idx = idx
 	load.ok = true
 	listBinCacheMu.Lock()
-	listBinCache[revision] = idx
-	delete(listBinInflight, revision)
+	listBinCache[key] = idx
+	delete(listBinInflight, key)
 	close(load.done)
 	listBinCacheMu.Unlock()
 	return idx, true
 }
 
-func loadInfoIndex(baseDir, revision string) map[string]infoAlias {
+func loadInfoIndex(baseDir, revision, platform string) map[string]infoAlias {
+	key := cacheKey(revision, platform)
 	infoCacheMu.RLock()
-	m, ok := infoCache[revision]
+	m, ok := infoCache[key]
 	infoCacheMu.RUnlock()
 	if ok {
 		return m
 	}
 
 	infoCacheMu.Lock()
-	if m, ok := infoCache[revision]; ok {
+	if m, ok := infoCache[key]; ok {
 		infoCacheMu.Unlock()
 		return m
 	}
-	if load := infoInflight[revision]; load != nil {
+	if load := infoInflight[key]; load != nil {
 		infoCacheMu.Unlock()
 		<-load.done
 		return load.m
 	}
 	load := &infoLoad{done: make(chan struct{})}
-	infoInflight[revision] = load
+	infoInflight[key] = load
 	infoCacheMu.Unlock()
 
-	filePath := filepath.Join(baseDir, "assets", "revisions", revision, "info.json")
+	filePath := filepath.Join(baseDir, "assets", "revisions", revision, platform, "info.json")
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		infoCacheMu.Lock()
-		infoCache[revision] = nil
-		delete(infoInflight, revision)
+		infoCache[key] = nil
+		delete(infoInflight, key)
 		close(load.done)
 		infoCacheMu.Unlock()
 		return nil
@@ -285,8 +294,8 @@ func loadInfoIndex(baseDir, revision string) map[string]infoAlias {
 	var entries []infoJSONEntry
 	if err := json.Unmarshal(data, &entries); err != nil {
 		infoCacheMu.Lock()
-		infoCache[revision] = nil
-		delete(infoInflight, revision)
+		infoCache[key] = nil
+		delete(infoInflight, key)
 		close(load.done)
 		infoCacheMu.Unlock()
 		return nil
@@ -307,8 +316,8 @@ func loadInfoIndex(baseDir, revision string) map[string]infoAlias {
 	}
 	load.m = m
 	infoCacheMu.Lock()
-	infoCache[revision] = m
-	delete(infoInflight, revision)
+	infoCache[key] = m
+	delete(infoInflight, key)
 	close(load.done)
 	infoCacheMu.Unlock()
 	return m
@@ -378,7 +387,7 @@ func hasNonASCII(s string) bool {
 // an en locale fallback is appended (marked IsLocaleFallback so callers can skip MD5 validation).
 // For paths with non-ASCII characters, mojibake (double-encoded) and fullwidth-to-ASCII
 // variants are also tried.
-func pathStrToFullPaths(baseDir, revision, assetType, pathStr string) []pathCandidate {
+func pathStrToFullPaths(baseDir, revision, platform, assetType, pathStr string) []pathCandidate {
 	fsPath := strings.ReplaceAll(pathStr, ")", "/")
 	if strings.Contains(fsPath, "..") || filepath.IsAbs(fsPath) || strings.HasPrefix(fsPath, "/") {
 		return nil
@@ -402,7 +411,7 @@ func pathStrToFullPaths(baseDir, revision, assetType, pathStr string) []pathCand
 	if strings.Contains(pathStr, ")ko)") {
 		entries = append(entries, tagged{strings.ReplaceAll(pathStr, ")ko)", ")en)"), true})
 	}
-	base := filepath.Join(baseDir, "assets", "revisions", revision)
+	base := filepath.Join(baseDir, "assets", "revisions", revision, platform)
 	var out []pathCandidate
 	seen := make(map[string]bool)
 	for _, e := range entries {
@@ -434,64 +443,86 @@ func appendUniqueCandidate(candidates []assetCandidate, seen map[string]bool, ca
 	return append(candidates, candidate)
 }
 
-func duplicateCandidatePath(baseDir string, candidate assetCandidate, assetType, targetRevision, targetBaseName string) string {
-	root := filepath.Join(baseDir, "assets", "revisions", candidate.Revision, assetType)
+func duplicateCandidatePath(baseDir string, candidate assetCandidate, platform, assetType, targetRevision, targetBaseName string) string {
+	root := filepath.Join(baseDir, "assets", "revisions", candidate.Revision, platform, assetType)
 	rel, err := filepath.Rel(root, candidate.Path)
 	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
 		return ""
 	}
-	return filepath.Join(baseDir, "assets", "revisions", targetRevision, assetType, filepath.Dir(rel), targetBaseName)
+	return filepath.Join(baseDir, "assets", "revisions", targetRevision, platform, assetType, filepath.Dir(rel), targetBaseName)
 }
 
 // objectIdToFilePathCandidates returns candidate file paths for the object: list.bin path, locale fallbacks
 // (ja/ko -> en), then info.json duplicate mappings (from-name -> to-name, possibly in a different revision).
 // The original locale path is tried first (with MD5 validation); locale fallbacks are tried after
 // (without MD5 validation, since the hash in list.bin refers to the original locale's content).
+//
+// Two tiers are searched in order: the requested platform tree (e.g. revisions/0/ios/...) and then
+// the un-split shared tree (revisions/0/...) which acts as a fallback for operators who deploy a
+// single unified asset dump. Each tier carries its own list.bin md5 so corruption is still detected.
 // Callers should try each path until one exists on disk.
-func objectIdToFilePathCandidates(baseDir, revision, assetType, objectId string) (candidates []assetCandidate, size int64, ok bool) {
-	idx, ok := loadListBinIndex(baseDir, revision)
-	if !ok || idx == nil {
-		return nil, 0, false
-	}
-	entry, ok := idx[objectId]
-	if !ok || entry.Path == "" {
-		return nil, 0, false
-	}
-	paths := pathStrToFullPaths(baseDir, revision, assetType, entry.Path)
-	if len(paths) == 0 {
-		return nil, 0, false
-	}
+func objectIdToFilePathCandidates(baseDir, revision, platform, assetType, objectId string) (candidates []assetCandidate, size int64, ok bool) {
 	seen := make(map[string]bool)
-	for _, pc := range paths {
-		md5 := entry.MD5
-		if pc.IsLocaleFallback {
-			md5 = ""
+	var firstSize int64
+	var anyHit bool
+
+	appendForPlatform := func(p, label string) {
+		idx, idxOk := loadListBinIndex(baseDir, revision, p)
+		if !idxOk || idx == nil {
+			return
 		}
-		candidates = appendUniqueCandidate(candidates, seen, assetCandidate{
-			Path:        pc.Path,
-			Revision:    revision,
-			Source:      "list.bin",
-			ExpectedMD5: md5,
-		})
-	}
-	infoIndex := loadInfoIndex(baseDir, revision)
-	if len(infoIndex) > 0 {
-		for _, c := range candidates {
-			alias, ok := infoIndex[filepath.Base(c.Path)]
-			if !ok || alias.ToName == "" {
-				continue
-			}
-			alt := duplicateCandidatePath(baseDir, c, assetType, alias.ToRevision, alias.ToName)
-			if alt == "" {
-				continue
+		entry, entryOk := idx[objectId]
+		if !entryOk || entry.Path == "" {
+			return
+		}
+		paths := pathStrToFullPaths(baseDir, revision, p, assetType, entry.Path)
+		if len(paths) == 0 {
+			return
+		}
+		tierStart := len(candidates)
+		for _, pc := range paths {
+			md5 := entry.MD5
+			if pc.IsLocaleFallback {
+				md5 = ""
 			}
 			candidates = appendUniqueCandidate(candidates, seen, assetCandidate{
-				Path:        alt,
-				Revision:    alias.ToRevision,
-				Source:      "info.json redirect",
-				ExpectedMD5: alias.MD5,
+				Path:        pc.Path,
+				Revision:    revision,
+				Source:      "list.bin (" + label + ")",
+				ExpectedMD5: md5,
 			})
 		}
+		infoIndex := loadInfoIndex(baseDir, revision, p)
+		if len(infoIndex) > 0 {
+			tierCandidates := candidates[tierStart:]
+			for _, c := range tierCandidates {
+				alias, aliasOk := infoIndex[filepath.Base(c.Path)]
+				if !aliasOk || alias.ToName == "" {
+					continue
+				}
+				alt := duplicateCandidatePath(baseDir, c, p, assetType, alias.ToRevision, alias.ToName)
+				if alt == "" {
+					continue
+				}
+				candidates = appendUniqueCandidate(candidates, seen, assetCandidate{
+					Path:        alt,
+					Revision:    alias.ToRevision,
+					Source:      "info.json redirect (" + label + ")",
+					ExpectedMD5: alias.MD5,
+				})
+			}
+		}
+		if !anyHit {
+			firstSize = entry.Size
+			anyHit = true
+		}
 	}
-	return candidates, entry.Size, true
+
+	appendForPlatform(platform, platform)
+	appendForPlatform("", "shared")
+
+	if !anyHit {
+		return nil, 0, false
+	}
+	return candidates, firstSize, true
 }

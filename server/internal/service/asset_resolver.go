@@ -70,32 +70,32 @@ func (t *revisionTracker) Active(clientAddr string) string {
 	return revision
 }
 
-func (r *assetResolver) Resolve(objectId, assetType, activeRevision string) (assetResolution, bool) {
+func (r *assetResolver) Resolve(objectId, assetType, activeRevision, platform string) (assetResolution, bool) {
 	start := time.Now()
 	resolution := assetResolution{ActiveRevision: activeRevision}
 	revision := activeRevision
 
-	candidates, listSize, ok := objectIdToFilePathCandidates(r.baseDir, revision, assetType, objectId)
+	candidates, listSize, ok := objectIdToFilePathCandidates(r.baseDir, revision, platform, assetType, objectId)
 	if ok && len(candidates) > 0 {
 		resolution.ListRevision = revision
 		resolution.ListSize = listSize
 		resolution.Candidates = candidates
 		if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
-			log.Printf("[HTTP] Asset resolve slow: object_id=%s type=%s active_revision=%s list_revision=%s elapsed=%s", objectId, assetType, activeRevision, revision, elapsed)
+			log.Printf("[HTTP] Asset resolve slow: object_id=%s type=%s platform=%s active_revision=%s list_revision=%s elapsed=%s", objectId, assetType, platform, activeRevision, revision, elapsed)
 		}
 		return resolution, true
 	}
 
 	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
-		log.Printf("[HTTP] Asset resolve miss: object_id=%s type=%s active_revision=%s elapsed=%s", objectId, assetType, activeRevision, elapsed)
+		log.Printf("[HTTP] Asset resolve miss: object_id=%s type=%s platform=%s active_revision=%s elapsed=%s", objectId, assetType, platform, activeRevision, elapsed)
 	}
 	return resolution, false
 }
 
-func (r *assetResolver) Prewarm(activeRevision string) {
+func (r *assetResolver) Prewarm(activeRevision, platform string) {
 	if activeRevision == "" {
 		return
 	}
-	_, _ = loadListBinIndex(r.baseDir, activeRevision)
-	_ = loadInfoIndex(r.baseDir, activeRevision)
+	_, _ = loadListBinIndex(r.baseDir, activeRevision, platform)
+	_ = loadInfoIndex(r.baseDir, activeRevision, platform)
 }

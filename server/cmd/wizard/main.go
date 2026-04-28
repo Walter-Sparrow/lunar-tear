@@ -55,6 +55,7 @@ type ports struct {
 
 func main() {
 	setupOnly := flag.Bool("setup-only", false, "show patching instructions and exit without building or launching")
+	preferSaved := flag.Bool("prefer-saved", false, "reuse saved config without prompting")
 	grpcPort := flag.Int("grpc-port", defaultGRPCPort, "gRPC server port")
 	cdnPort := flag.Int("cdn-port", defaultCDNPort, "CDN server port")
 	authPort := flag.Int("auth-port", defaultAuthPort, "auth server port")
@@ -77,7 +78,7 @@ func main() {
 		downloadDeps()
 	}
 
-	ip, cfg, firstRun := resolveIP()
+	ip, cfg, firstRun := resolveIP(*preferSaved)
 
 	p := resolvePorts(flagSet, *grpcPort, *cdnPort, *authPort, cfg)
 	savedPorts := portsFromConfig(cfg)
@@ -121,23 +122,68 @@ type assetCheck struct {
 var requiredAssets = []assetCheck{
 	{"assets", true},
 	{"assets/release/database.bin.e", false},
-	{"assets/revisions/0/list.bin", false},
-	{"assets/revisions/0/assetbundle", true},
-	{"assets/revisions/0/resources", true},
+}
+
+// assetTrees lists every rev-0 layout the CDN accepts. At least one full set
+// must be present; users may have only the un-split shared tree, only Android,
+// only iOS, or any combination.
+var assetTrees = [][]assetCheck{
+	{
+		{"assets/revisions/0/list.bin", false},
+		{"assets/revisions/0/assetbundle", true},
+		{"assets/revisions/0/resources", true},
+	},
+	{
+		{"assets/revisions/0/android/list.bin", false},
+		{"assets/revisions/0/android/assetbundle", true},
+		{"assets/revisions/0/android/resources", true},
+	},
+	{
+		{"assets/revisions/0/ios/list.bin", false},
+		{"assets/revisions/0/ios/assetbundle", true},
+		{"assets/revisions/0/ios/resources", true},
+	},
+}
+
+func checkAsset(a assetCheck) (missing string, ok bool) {
+	info, err := os.Stat(a.path)
+	if err != nil {
+		return a.path, false
+	}
+	if a.dir && !info.IsDir() {
+		return a.path + string(filepath.Separator), false
+	}
+	if !a.dir && info.IsDir() {
+		return a.path, false
+	}
+	return "", true
 }
 
 func validateAssets() {
 	var missing []string
 	for _, a := range requiredAssets {
-		info, err := os.Stat(a.path)
-		if err != nil {
-			missing = append(missing, a.path)
-			continue
+		if m, ok := checkAsset(a); !ok {
+			missing = append(missing, m)
 		}
-		if a.dir && !info.IsDir() {
-			missing = append(missing, a.path+string(filepath.Separator))
-		} else if !a.dir && info.IsDir() {
-			missing = append(missing, a.path)
+	}
+
+	var treeMissing [][]string
+	anyTreeOK := false
+	for _, group := range assetTrees {
+		var groupMissing []string
+		for _, a := range group {
+			if m, ok := checkAsset(a); !ok {
+				groupMissing = append(groupMissing, m)
+			}
+		}
+		if len(groupMissing) == 0 {
+			anyTreeOK = true
+		}
+		treeMissing = append(treeMissing, groupMissing)
+	}
+	if !anyTreeOK {
+		for _, gm := range treeMissing {
+			missing = append(missing, gm...)
 		}
 	}
 
@@ -159,6 +205,8 @@ func validateAssets() {
 	}
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("  Place the extracted game assets under server/assets/ and try again."))
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("  At least one of assets/revisions/0/, assets/revisions/0/android/, or assets/revisions/0/ios/ must be fully present."))
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("  Get them from ") + hlStyle.Render("#resources") + dimStyle.Render(" on Discord: ") + hlStyle.Hyperlink("https://discord.com/invite/MZAf5aVkJG").Render("https://discord.com/invite/MZAf5aVkJG"))
 	b.WriteString("\n")
@@ -289,7 +337,11 @@ func runProtoc() {
 
 func runMigrate() {
 	_ = spinner.New().Title("  Running migrations...").Action(func() {
-		runQuiet(exec.Command(toolPaths["make"], "migrate", "GOOSE="+toolPaths["goose"]), "database migration")
+		if err := os.MkdirAll("db", 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "  Failed to create db/: %v\n", err)
+			os.Exit(1)
+		}
+		runQuiet(exec.Command(toolPaths["goose"], "-dir", "migrations", "-allow-missing", "sqlite3", "db/game.db", "up"), "database migration")
 	}).Run()
 }
 
@@ -311,12 +363,25 @@ func runQuiet(cmd *exec.Cmd, label string) {
 	}
 }
 
-func resolveIP() (string, config, bool) {
-	if cfg, err := loadConfig(); err == nil {
+func resolveIP(preferSaved bool) (string, config, bool) {
+	cfg, err := loadConfig()
+	if err == nil {
+		if preferSaved {
+			if isLANBased(cfg) {
+				if ip, updated, ok := recheckLANIP(cfg); ok {
+					return ip, updated, false
+				}
+			}
+			return cfg.IP, cfg, false
+		}
+
 		ip, cfg, done := handleSavedConfig(cfg)
 		if done {
 			return ip, cfg, false
 		}
+	} else if preferSaved {
+		fmt.Fprintln(os.Stderr, "  --prefer-saved: no saved config found; run without the flag first.")
+		os.Exit(1)
 	}
 
 	ip, cfg := runWizard()

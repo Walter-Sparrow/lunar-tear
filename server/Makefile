@@ -34,32 +34,18 @@ build-dev:
 	go build -o bin/dev$(EXE) ./cmd/dev
 
 build-all:
-ifeq ($(OS),Windows_NT)
-	if not exist bin mkdir bin
-else
-	mkdir -p bin
-endif
 	go build -o bin/dev$(EXE) ./cmd/dev
 	go build -o bin/auth-server$(EXE) ./cmd/auth-server
 	go build -o bin/octo-cdn$(EXE) ./cmd/octo-cdn
 	go build -o bin/lunar-tear$(EXE) ./cmd/lunar-tear
 
 clean:
-ifeq ($(OS),Windows_NT)
-	if exist bin rmdir /s /q bin
-else
-	rm -rf bin
-endif
+	rm -rf bin/*
 
 dev:
 	go run ./cmd/dev $(ARGS)
 
 migrate:
-ifeq ($(OS),Windows_NT)
-	if not exist db mkdir db
-else
-	mkdir -p db
-endif
 	$(GOOSE) -dir migrations -allow-missing sqlite3 db/game.db up
 
 import:

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-04-25
+
+### Working
+
+- SQLite persistence layer with snapshot import tool
+- Authentication server with login UI
+- Wizard CLI for guided first-time setup
+- Dev runner (`make dev`) with automatic service builds
+- Memoir sub-status system with level-based unlocks
+- Companion and parts granting from the shop
+- `CopyDeck` / `RemoveDeck` deck management
+- Karma functionality
+- Docker multi-service orchestration (auth, CDN, gRPC) with cross-platform improvements
+- `--grpc-port` CLI flag
+
+### Fixed
+
+- Gate desync on quest-finish crash — scene now advances atomically
+- Equipment duplication in deck management
+
 ## 2026-04-18
 
 ### Working

@@ -18,6 +18,26 @@ var loginFS embed.FS
 
 var loginTmpl = template.Must(template.ParseFS(loginFS, "login.html"))
 
+// oauthRedirectTmpl drives the fbconnect:// hand-off via a renderer-initiated
+// navigation instead of a server-side 302. Android WebView does NOT invoke
+// WebViewClient.shouldOverrideUrlLoading for 302 redirects from POST form
+// submissions to non-http schemes (documented Chromium WebView limitation,
+// Stack Overflow #6738328 / Google issuetracker #36918490). Returning a 200
+// HTML page with both <meta http-equiv="refresh"> and window.location.replace()
+// makes the cross-scheme navigation renderer-initiated, which DOES invoke
+// shouldOverrideUrlLoading, so the FB SDK can extract access_token from the
+// URL fragment and complete its login flow. html/template auto-escapes {{.}}
+// correctly for the meta URL-attribute context and the JS string-literal
+// context inside <script>.
+var oauthRedirectTmpl = template.Must(template.New("oauthRedirect").Parse(
+	`<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url={{.}}">
+<script>window.location.replace({{.}});</script>
+</head><body>
+<noscript><a href="{{.}}">Continue</a></noscript>
+</body></html>
+`))
+
 type Handlers struct {
 	store *AuthStore
 	tok   *TokenService
@@ -30,6 +50,7 @@ func NewHandlers(store *AuthStore, tok *TokenService) *Handlers {
 type loginPageData struct {
 	RedirectURI string
 	State       string
+	Scope       string
 	Error       string
 	Username    string
 }
@@ -77,6 +98,7 @@ func (h *Handlers) oauthGet(w http.ResponseWriter, r *http.Request) {
 	data := loginPageData{
 		RedirectURI: r.URL.Query().Get("redirect_uri"),
 		State:       r.URL.Query().Get("state"),
+		Scope:       r.URL.Query().Get("scope"),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := loginTmpl.Execute(w, data); err != nil {
@@ -95,11 +117,13 @@ func (h *Handlers) oauthPost(w http.ResponseWriter, r *http.Request) {
 	action := r.FormValue("action")
 	redirectURI := r.FormValue("redirect_uri")
 	state := r.FormValue("state")
+	scope := r.FormValue("scope")
 
 	renderErr := func(msg string) {
 		data := loginPageData{
 			RedirectURI: redirectURI,
 			State:       state,
+			Scope:       scope,
 			Error:       msg,
 			Username:    username,
 		}
@@ -158,20 +182,31 @@ func (h *Handlers) oauthPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	payload := fmt.Sprintf(`{"user_id":"%d"}`, user.ID)
-	b64 := base64.StdEncoding.EncodeToString([]byte(payload))
+	b64 := base64.RawURLEncoding.EncodeToString([]byte(payload))
 
 	fragment := url.Values{}
 	fragment.Set("access_token", token)
 	fragment.Set("token_type", "bearer")
 	fragment.Set("expires_in", strconv.FormatInt(int64(tokenTTL.Seconds()), 10))
 	fragment.Set("signed_request", "0."+b64)
+	// iOS FBSDKLoginManager treats an empty granted_scopes set as a cancelled login
+	// (LoginManager.swift -> getSuccessResult -> getCancelledResult). Echo back the
+	// scope the SDK sent so parameters.permissions is non-empty and the SDK fires
+	// its success path. Android tolerates either way.
+	if scope != "" {
+		fragment.Set("granted_scopes", scope)
+		fragment.Set("denied_scopes", "")
+	}
 	if state != "" {
 		fragment.Set("state", state)
 	}
 
 	target := redirectURI + "?" + fragment.Encode()
 	log.Printf("redirecting to %s", target)
-	http.Redirect(w, r, target, http.StatusFound)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := oauthRedirectTmpl.Execute(w, target); err != nil {
+		log.Printf("render oauth redirect: %v", err)
+	}
 }
 
 func (h *Handlers) HandleCheckUsername(w http.ResponseWriter, r *http.Request) {

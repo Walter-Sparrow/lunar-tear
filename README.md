@@ -24,7 +24,13 @@ cd server
 go run ./cmd/wizard
 ```
 
-Your choices are saved so next time you just press Enter to relaunch with the same settings.
+Your choices are saved so next time you just press Enter to relaunch with the same settings. To skip the confirmation prompt entirely (useful for scripts or quick relaunches), pass `--prefer-saved`:
+
+```bash
+go run ./cmd/wizard --prefer-saved
+```
+
+If no saved config exists, the flag prints an error and exits.
 
 #### Custom Ports
 
@@ -34,11 +40,12 @@ By default the wizard uses ports 8003 (gRPC), 8080 (CDN), and 3000 (auth). Overr
 go run ./cmd/wizard --grpc-port 9003 --cdn-port 9080
 ```
 
-| Flag          | Default | Description      |
-| ------------- | ------- | ---------------- |
-| `--grpc-port` | `8003`  | gRPC server port |
-| `--cdn-port`  | `8080`  | CDN server port  |
-| `--auth-port` | `3000`  | Auth server port |
+| Flag             | Default | Description                        |
+| ---------------- | ------- | ---------------------------------- |
+| `--prefer-saved` | `false` | Reuse saved config without prompting |
+| `--grpc-port`    | `8003`  | gRPC server port                   |
+| `--cdn-port`     | `8080`  | CDN server port                    |
+| `--auth-port`    | `3000`  | Auth server port                   |
 
 Custom ports are saved to `.wizard.json` alongside your other settings. On the next run the saved ports are reused automatically — no need to pass the flags again. If you later pass different port flags, the wizard warns you that the ports changed and asks for confirmation before continuing.
 
