@@ -20,12 +20,15 @@ import (
 
 func main() {
 	listen := flag.String("listen", "0.0.0.0:8080", "local bind address (host:port)")
-	publicAddr := flag.String("public-addr", "127.0.0.1:8080", "externally-reachable host:port used for list.bin URL rewriting")
+	publicAddr := flag.String("public-addr", "http://127.0.0.1:8080", "externally-reachable host:port used for list.bin URL rewriting")
 	assetsDir := flag.String("assets-dir", ".", "root directory containing the assets/ tree")
 	flag.Parse()
 
 	// Build resourcesBaseURL from public-addr (must be exactly 43 chars to fit in list.bin protobuf).
-	prefix := "http://" + *publicAddr + "/"
+	prefix := *publicAddr + "/"
+	if !strings.Contains(*publicAddr, "://") {
+		prefix = "http://" + prefix
+	}
 	padLen := 43 - len(prefix)
 	resourcesBaseURL := ""
 	if padLen < 1 {

@@ -1,8 +1,5 @@
 FROM alpine:latest AS builder
 
-WORKDIR /usr/local/src
-COPY . .
-
 RUN apk add --no-cache \
     protobuf \
     protobuf-dev \
@@ -11,11 +8,17 @@ RUN apk add --no-cache \
     go \
     libcap
 
-RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest &&\
-    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest &&\
-    go install github.com/pressly/goose/v3/cmd/goose@latest &&\
-    PATH="$PATH:$(go env GOPATH)/bin" make proto &&\
-    go build -o lunar-tear ./cmd/lunar-tear &&\
+RUN --mount=type=cache,target=/root/go/pkg/mod \
+    go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest && \
+    go install github.com/pressly/goose/v3/cmd/goose@latest
+
+WORKDIR /usr/local/src
+COPY . .
+
+RUN --mount=type=cache,target=/root/go/pkg/mod \
+    PATH="$PATH:$(go env GOPATH)/bin" make proto && \
+    go build -o lunar-tear ./cmd/lunar-tear && \
     setcap cap_net_bind_service=+ep ./lunar-tear
 
 FROM alpine:latest
@@ -33,4 +36,3 @@ COPY --from=builder /usr/local/src/migrations ./migrations
 COPY entrypoint.sh .
 
 ENTRYPOINT /opt/lunar-tear/entrypoint.sh
-
